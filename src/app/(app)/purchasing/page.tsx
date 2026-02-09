@@ -1222,7 +1222,8 @@ export default function PurchasingPage() {
                             { key: "vendor", label: "Vendor" },
                             { key: "type", label: "Type" },
                             { key: "deletedAt", label: "Deleted On" },
-                            { key: "lines", label: "Lines", align: "right" },
+                            { key: "items", label: "Items" },
+                            { key: "value", label: "Value", align: "right" },
                             { key: "status", label: "Status" }
                           ]}
                           rows={pagedDeleted.items.map((order) => ({
@@ -1230,7 +1231,24 @@ export default function PurchasingPage() {
                             vendor: order.vendor.name,
                             type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
                             deletedAt: order.deletedAt ? new Date(order.deletedAt).toLocaleDateString("en-IN") : "—",
-                            lines: order.lines.length,
+                            items: order.lines.length ? (
+                              <div className="space-y-1 text-xs text-text-muted">
+                                {order.lines.map((line) => (
+                                  <div key={line.id} className="flex items-center justify-between gap-3">
+                                    <span className="text-text">
+                                      {line.sku.code} · {line.sku.name}
+                                    </span>
+                                    <span>
+                                      {line.quantity.toFixed(2).replace(/\\.00$/, "")} {line.sku.unit} · ₹
+                                      {line.unitPrice.toFixed(2).replace(/\\.00$/, "")}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              "—"
+                            ),
+                            value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
                             status: <Badge variant="danger" label="Deleted" />
                           }))}
                           emptyLabel={loading ? "Loading deleted POs..." : "No deleted POs."}
