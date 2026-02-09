@@ -96,7 +96,8 @@ export async function computeAvailabilitySummary({
   >();
   routingRows.forEach((routing) => {
     const capacities = routing.steps.map((step) => step.capacityPerMinute).filter((value) => value > 0);
-    const bottleneckCapacity = capacities.length ? Math.min(...capacities) : null;
+    // For alternative machine options, use the fastest capacity as the best‑case estimate.
+    const bottleneckCapacity = capacities.length ? Math.max(...capacities) : null;
     routingMap.set(routing.finishedSkuId, {
       bottleneckCapacity,
       routingSteps: routing.steps.length
@@ -105,7 +106,7 @@ export async function computeAvailabilitySummary({
       routing.finishedSkuId,
       routing.steps
         .slice()
-        .sort((a, b) => a.sequence - b.sequence)
+        .sort((a, b) => b.capacityPerMinute - a.capacityPerMinute)
         .map((step) => ({
           machineId: step.machineId,
           machineCode: step.machine.code,

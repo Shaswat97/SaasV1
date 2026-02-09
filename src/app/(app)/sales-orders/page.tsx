@@ -413,8 +413,35 @@ export default function SalesOrdersPage() {
         });
       });
     });
-    const items = Array.from(map.values()).sort((a, b) => b.minutes - a.minutes);
+    const items = Array.from(map.values()).sort((a, b) => a.minutes - b.minutes);
     return { items, missing };
+  }, [detail]);
+
+  const machineOptionsBySku = useMemo(() => {
+    if (!detail) return [];
+    return detail.availability.lines
+      .filter((line) => line.productionRequired > 0)
+      .map((line) => {
+        const options = (line.routingDetail ?? [])
+          .map((step) => ({
+            machineId: step.machineId,
+            machineCode: step.machineCode,
+            machineName: step.machineName,
+            capacityPerMinute: step.capacityPerMinute,
+            minutes: step.minutes ?? 0
+          }))
+          .filter((step) => step.capacityPerMinute > 0)
+          .sort((a, b) => a.minutes - b.minutes);
+        return {
+          lineId: line.lineId,
+          skuCode: line.skuCode,
+          skuName: line.skuName,
+          unit: line.unit,
+          productionRequired: line.productionRequired,
+          options,
+          fastest: options[0] ?? null
+        };
+      });
   }, [detail]);
 
   const materialVarianceSummary = useMemo(() => {
@@ -875,7 +902,7 @@ export default function SalesOrdersPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-text-muted">Estimated Production Time (HH:MM)</p>
+                    <p className="text-text-muted">Estimated Production Time (best machine per SKU)</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-lg font-semibold text-text">
                         {(() => {
@@ -922,7 +949,7 @@ export default function SalesOrdersPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-text-muted">Machine Runtime Plan</p>
+                    <p className="text-text-muted">Machine Options Summary</p>
                     <p className="text-sm text-text">
                       {machineRuntimeSummary.items.length
                         ? `${machineRuntimeSummary.items.length} machine${machineRuntimeSummary.items.length > 1 ? "s" : ""}`
@@ -947,6 +974,58 @@ export default function SalesOrdersPage() {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
+              {machineOptionsBySku.length ? (
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Machine Options by SKU</CardTitle>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="space-y-4">
+                      {machineOptionsBySku.map((item) => (
+                        <div
+                          key={item.lineId}
+                          className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-text">
+                                {item.skuCode} · {item.skuName}
+                              </p>
+                              <p className="text-xs text-text-muted">
+                                Production required: {item.productionRequired} {item.unit}
+                              </p>
+                            </div>
+                            {item.fastest ? (
+                              <Badge variant="success" label={`Fastest: ${item.fastest.machineCode}`} />
+                            ) : (
+                              <Badge variant="warning" label="Routing missing" />
+                            )}
+                          </div>
+                          {item.options.length ? (
+                            <div className="mt-3 grid gap-2 text-xs text-text-muted">
+                              {item.options.map((option) => (
+                                <div
+                                  key={`${item.lineId}-${option.machineId}`}
+                                  className="flex items-center justify-between gap-3"
+                                >
+                                  <span className="text-text">
+                                    {option.machineCode} · {option.machineName}
+                                  </span>
+                                  <span>{formatMinutesToClock(option.minutes)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-xs text-text-muted">
+                              No machine options mapped for this SKU yet.
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardBody>
+                </Card>
+              ) : null}
               <Card>
                 <CardHeader>
                   <CardTitle>Finished Availability</CardTitle>

@@ -257,31 +257,55 @@ export default function ProductionPage() {
     [routings, selectedSkuId]
   );
 
-  const machineOptions = useMemo(() => {
+  const machineCapacityOptions = useMemo(() => {
     if (!routingForSelected || routingForSelected.steps.length === 0) return [];
-    const unique = new Map<string, Machine>();
+    const map = new Map<string, { machineId: string; machineCode: string; machineName: string; capacityPerMinute: number }>();
     routingForSelected.steps.forEach((step) => {
-      unique.set(step.machineId, step.machine);
+      const existing = map.get(step.machineId);
+      if (!existing || step.capacityPerMinute > existing.capacityPerMinute) {
+        map.set(step.machineId, {
+          machineId: step.machineId,
+          machineCode: step.machine.code,
+          machineName: step.machine.name,
+          capacityPerMinute: step.capacityPerMinute
+        });
+      }
     });
-    return Array.from(unique.values()).map((machine) => ({
-      value: machine.id,
-      label: `${machine.code} · ${machine.name}`
-    }));
+    return Array.from(map.values()).sort((a, b) => b.capacityPerMinute - a.capacityPerMinute);
   }, [routingForSelected]);
+
+  const machineOptions = useMemo(
+    () =>
+      machineCapacityOptions.map((machine) => ({
+        value: machine.machineId,
+        label: `${machine.machineCode} · ${machine.machineName}`
+      })),
+    [machineCapacityOptions]
+  );
 
   const machineCapacityMap = useMemo(() => {
     const map = new Map<string, number>();
-    if (!routingForSelected) return map;
-    routingForSelected.steps.forEach((step) => {
-      const existing = map.get(step.machineId);
-      if (existing == null) {
-        map.set(step.machineId, step.capacityPerMinute);
-      } else {
-        map.set(step.machineId, Math.min(existing, step.capacityPerMinute));
-      }
+    machineCapacityOptions.forEach((machine) => {
+      map.set(machine.machineId, machine.capacityPerMinute);
     });
     return map;
-  }, [routingForSelected]);
+  }, [machineCapacityOptions]);
+
+  const machineOptionDetails = useMemo(() => {
+    const planned = Number(plannedQty || 0);
+    return machineCapacityOptions.map((machine) => ({
+      ...machine,
+      minutes: planned > 0 && machine.capacityPerMinute > 0 ? planned / machine.capacityPerMinute : null
+    }));
+  }, [machineCapacityOptions, plannedQty]);
+
+  useEffect(() => {
+    if (machineCapacityOptions.length === 0) return;
+    const fastest = machineCapacityOptions[0];
+    if (!machineId || !machineCapacityMap.has(machineId)) {
+      setMachineId(fastest.machineId);
+    }
+  }, [machineCapacityOptions, machineCapacityMap, machineId]);
 
   const employeeOptions = useMemo(
     () => employees.map((employee) => ({ value: employee.id, label: `${employee.code} · ${employee.name}` })),
@@ -594,6 +618,35 @@ export default function ProductionPage() {
               {routingForSelected && routingForSelected.steps.length === 0 ? (
                 <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-3 text-xs text-text-muted">
                   No routing steps mapped for this SKU. Map in Settings &gt; Master Data &gt; Finished SKUs &gt; Routing Steps.
+                </div>
+              ) : null}
+              {machineOptionDetails.length ? (
+                <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-3 text-xs text-text-muted">
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Machine Options</p>
+                  <div className="mt-2 space-y-2">
+                    {machineOptionDetails.map((machine, index) => (
+                      <div key={machine.machineId} className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-text">
+                            {machine.machineCode} · {machine.machineName}
+                          </div>
+                          <div>
+                            Capacity: {machine.capacityPerMinute.toFixed(2).replace(/\.00$/, "")} units/min
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {machine.minutes != null ? (
+                            <div className={index === 0 ? "font-semibold text-text" : ""}>
+                              {formatMinutesToClock(machine.minutes)}
+                            </div>
+                          ) : (
+                            <div>Enter planned qty</div>
+                          )}
+                          {index === 0 ? <div className="text-[10px] text-success">Fastest option</div> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
               <Input

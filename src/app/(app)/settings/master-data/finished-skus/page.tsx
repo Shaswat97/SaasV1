@@ -698,7 +698,7 @@ export default function FinishedSkusPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            Routing Steps
+            Machine Options (Routing)
             {routingMissingSet.size > 0 ? (
               <Badge variant="warning" label={`${routingMissingSet.size} missing`} />
             ) : (
@@ -719,6 +719,10 @@ export default function FinishedSkusPage() {
                 onChange={(event) => setSelectedFinishedId(event.target.value)}
                 options={routingFinishedOptions}
               />
+              <p className="text-xs text-text-muted">
+                Add every machine that can produce this SKU along with its capacity (units/min). These are treated as
+                alternative machine options, and the fastest option is suggested during order planning and production logs.
+              </p>
               {routingMissingList.length ? (
                 <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-3 text-xs text-text-muted">
                   Missing routing steps: {routingMissingList.join(", ")}
@@ -731,11 +735,11 @@ export default function FinishedSkusPage() {
               ) : null}
               {routingLines.length === 0 ? (
                 <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-4 text-sm text-text-muted">
-                  No routing steps yet. Add at least one step with machine and capacity.
+                  No machine options yet. Add at least one machine with capacity for this SKU.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Drag to reorder steps</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Drag to reorder options (optional)</p>
                   {routingLines.map((line, index) => (
                     <div
                       key={`${line.machineId}-${line.sequence}-${index}`}
