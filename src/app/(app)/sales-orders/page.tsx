@@ -227,6 +227,7 @@ export default function SalesOrdersPage() {
   const [subcontractVendorId, setSubcontractVendorId] = useState("");
   const [subcontractLines, setSubcontractLines] = useState<SubcontractLine[]>([]);
   const [deliveryLines, setDeliveryLines] = useState<DeliveryFormLine[]>([]);
+  const [includePackagingInInvoice, setIncludePackagingInInvoice] = useState(true);
 
   const { toasts, push, remove } = useToast();
 
@@ -454,6 +455,16 @@ export default function SalesOrdersPage() {
     return { expected, actual, delta, pct };
   }, [detail]);
 
+  const deliveryLinesWithQty = useMemo(
+    () => deliveryLines.filter((line) => Number(line.qty) > 0),
+    [deliveryLines]
+  );
+
+  const canPrintInvoice = useMemo(
+    () => deliveryLinesWithQty.length > 0 && deliveryLinesWithQty.every((line) => Boolean(line.deliveryDate)),
+    [deliveryLinesWithQty]
+  );
+
   const subcontractVendorOptions = useMemo(
     () =>
       vendors
@@ -565,8 +576,9 @@ export default function SalesOrdersPage() {
     }
   }
 
-  async function submitDeliveries() {
+  async function submitDeliveries(autoInvoice = false) {
     if (!detail) return;
+    const existingDeliveryIds = new Set(detail.deliveries.map((delivery) => delivery.id));
     const payloadLines = deliveryLines
       .filter((line) => Number(line.qty) > 0)
       .map((line) => ({
@@ -589,8 +601,24 @@ export default function SalesOrdersPage() {
     }
 
     try {
-      await apiSend(`/api/sales-orders/${detail.id}/deliveries`, "POST", { lines: payloadLines });
+      const updated = await apiSend<SalesOrderDetail>(`/api/sales-orders/${detail.id}/deliveries`, "POST", {
+        lines: payloadLines
+      });
       push("success", "Delivery recorded");
+      if (autoInvoice) {
+        const newDeliveries = updated.deliveries.filter((delivery) => !existingDeliveryIds.has(delivery.id));
+        for (const delivery of newDeliveries) {
+          try {
+            const invoice = await apiSend<Invoice>(
+              `/api/sales-orders/${updated.id}/deliveries/${delivery.id}/invoice`,
+              "POST"
+            );
+            downloadInvoicePdf(invoice.id, includePackagingInInvoice);
+          } catch (error: any) {
+            push("error", error.message ?? "Failed to create invoice");
+          }
+        }
+      }
       openDetail(detail.id);
       loadData();
     } catch (error: any) {
@@ -601,17 +629,19 @@ export default function SalesOrdersPage() {
   async function createInvoiceForDelivery(deliveryId: string) {
     if (!detail) return;
     try {
-      await apiSend(`/api/sales-orders/${detail.id}/deliveries/${deliveryId}/invoice`, "POST");
+      const invoice = await apiSend<Invoice>(`/api/sales-orders/${detail.id}/deliveries/${deliveryId}/invoice`, "POST");
       push("success", "Invoice created");
       openDetail(detail.id);
       loadData();
+      downloadInvoicePdf(invoice.id, includePackagingInInvoice);
     } catch (error: any) {
       push("error", error.message ?? "Failed to create invoice");
     }
   }
 
-  function downloadInvoicePdf(invoiceId: string) {
-    window.open(`/api/sales-orders/invoices/${invoiceId}/pdf`, "_blank");
+  function downloadInvoicePdf(invoiceId: string, includePackaging = includePackagingInInvoice) {
+    const param = includePackaging ? "1" : "0";
+    window.open(`/api/sales-orders/invoices/${invoiceId}/pdf?includePackaging=${param}`, "_blank");
   }
 
   function buildOrderRows(source: SalesOrder[]) {
@@ -1373,8 +1403,28 @@ export default function SalesOrdersPage() {
                         </div>
                       ))}
                     </div>
+                    <label className="flex items-center gap-2 text-xs text-text-muted">
+                      <input
+                        type="checkbox"
+                        checked={includePackagingInInvoice}
+                        onChange={(event) => setIncludePackagingInInvoice(event.target.checked)}
+                      />
+                      Include logistics/packaging cost in invoice PDF
+                    </label>
+                    {!canPrintInvoice && deliveryLinesWithQty.length ? (
+                      <p className="text-xs text-text-muted">
+                        Add a delivery date to enable invoice printing.
+                      </p>
+                    ) : null}
                     <div className="flex flex-wrap gap-3">
-                      <Button onClick={submitDeliveries}>Post Delivery</Button>
+                      <Button onClick={() => submitDeliveries()}>Post Delivery</Button>
+                      <Button
+                        variant="secondary"
+                        disabled={!canPrintInvoice}
+                        onClick={() => submitDeliveries(true)}
+                      >
+                        Post Delivery + Print Invoice
+                      </Button>
                     </div>
                   </div>
                 ) : null}

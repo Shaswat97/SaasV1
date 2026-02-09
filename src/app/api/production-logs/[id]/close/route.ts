@@ -55,11 +55,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const totalQty = data.goodQty + data.rejectQty + data.scrapQty;
   if (totalQty <= 0) return jsonError("Total output must be greater than 0", 400);
-  const alreadyClosed = (log.goodQty ?? 0) + (log.rejectQty ?? 0) + (log.scrapQty ?? 0);
-  const remainingQty = Math.max(log.plannedQty - alreadyClosed, 0);
-  if (totalQty > remainingQty) {
-    return jsonError("Close quantities cannot exceed remaining planned quantity", 400);
-  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {

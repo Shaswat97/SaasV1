@@ -352,7 +352,10 @@ export default function ProductionPage() {
     () =>
       openLogs.map((log) => ({
         value: log.id,
-        label: `${log.finishedSku.code} · ${log.machine.code} · ${log.plannedQty - (log.goodQty + log.rejectQty + log.scrapQty)} ${log.finishedSku.unit} remaining`
+        label: `${log.finishedSku.code} · ${log.machine.code} · ${Math.max(
+          log.plannedQty - (log.goodQty + log.rejectQty + log.scrapQty),
+          0
+        )} ${log.finishedSku.unit} remaining`
       })),
     [openLogs]
   );

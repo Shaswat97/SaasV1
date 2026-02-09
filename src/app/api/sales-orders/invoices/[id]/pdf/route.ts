@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultCompanyId } from "@/lib/tenant";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   const companyId = await getDefaultCompanyId();
+  const { searchParams } = new URL(request.url);
+  const includePackaging = !["0", "false", "no"].includes((searchParams.get("includePackaging") ?? "").toLowerCase());
 
   const invoice = await prisma.salesInvoice.findFirst({
     where: { id: params.id, companyId },
@@ -24,7 +26,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     const discounted = line.unitPrice * (1 - discount / 100);
     return sum + line.quantity * discounted * (1 + tax / 100);
   }, 0);
-  const packagingCost = invoice.delivery?.packagingCost ?? 0;
+  const packagingCost = includePackaging ? invoice.delivery?.packagingCost ?? 0 : 0;
   const total = linesTotal + packagingCost;
 
   const html = `<!doctype html>
@@ -83,7 +85,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
           .join("")}
       </tbody>
     </table>
-    ${packagingCost ? `<div class="section"><strong>Packaging Cost:</strong> ${packagingCost.toFixed(2)}</div>` : ""}
+    ${packagingCost ? `<div class="section"><strong>Packaging/Logistics Cost:</strong> ${packagingCost.toFixed(2)}</div>` : ""}
     <div class="total">Total: ${total.toFixed(2)}</div>
   </div>
 </body>
