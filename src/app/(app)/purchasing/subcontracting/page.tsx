@@ -1233,7 +1233,7 @@ export default function SubcontractingPage() {
         </div>
       ) : null}
 
-      <ToastViewport toasts={toasts} onRemove={remove} />
+      <ToastViewport toasts={toasts} onDismiss={remove} />
     </div>
   );
 }
