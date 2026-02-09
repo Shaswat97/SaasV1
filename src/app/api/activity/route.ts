@@ -1,8 +1,12 @@
-import { prisma } from "@/lib/prisma";
-import { jsonOk } from "@/lib/api-helpers";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");
@@ -12,7 +16,7 @@ export async function GET(request: Request) {
   const search = searchParams.get("search");
   const limit = Number(searchParams.get("limit") ?? "200");
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
 
   const createdAt: { gte?: Date; lte?: Date } = {};
   if (from) createdAt.gte = new Date(`${from}T00:00:00`);

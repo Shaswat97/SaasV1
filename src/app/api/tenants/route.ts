@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { createTenantRegistryEntry, listTenants } from "@/lib/tenant-registry";
 
+export const dynamic = "force-dynamic";
+
 const tenantSchema = z.object({
   subdomain: z.string().min(1),
   companyName: z.string().min(1),

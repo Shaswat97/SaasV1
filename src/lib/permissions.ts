@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest } from "@/lib/activity";
 
@@ -9,8 +10,15 @@ export type AdminContext = {
   isAdmin: boolean;
 };
 
-export async function getAdminContext(request: Request): Promise<AdminContext> {
-  const companyId = await getDefaultCompanyId();
+export async function getAdminContext(
+  request: Request,
+  db?: Prisma.TransactionClient | PrismaClient
+): Promise<AdminContext> {
+  const prisma = db ?? (await getTenantPrisma(request));
+  if (!prisma) {
+    throw new Error("Tenant not found");
+  }
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   if (!actorEmployeeId) {

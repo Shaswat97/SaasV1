@@ -1,9 +1,13 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(_: Request, { params }: { params: { id: string; deliveryId: string } }) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
 
   const delivery = await prisma.salesOrderDelivery.findFirst({
     where: { id: params.deliveryId, companyId, salesOrderId: params.id },

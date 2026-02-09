@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 export type AvailabilityLineSummary = {
   lineId: string;
@@ -60,10 +60,13 @@ export async function computeAvailabilitySummary({
 }: {
   companyId: string;
   lines: Array<{ id: string; skuId: string; quantity: number; deliveredQty?: number | null }>;
-  tx?: Prisma.TransactionClient;
+  tx?: Prisma.TransactionClient | PrismaClient;
   excludeSoLineIds?: string[];
 }): Promise<AvailabilitySummary> {
-  const db = tx ?? prisma;
+  const db = tx ?? (await getTenantPrisma());
+  if (!db) {
+    throw new Error("Tenant not found");
+  }
   const finishedSkuIds = Array.from(new Set(lines.map((line) => line.skuId)));
 
   const finishedSkus = await db.sku.findMany({
@@ -293,10 +296,13 @@ export async function buildProcurementPlan({
   companyId: string;
   lines: Array<{ id: string; skuId: string; quantity: number; deliveredQty?: number | null }>;
   availability?: AvailabilitySummary;
-  tx?: Prisma.TransactionClient;
+  tx?: Prisma.TransactionClient | PrismaClient;
   excludeSoLineIds?: string[];
 }): Promise<ProcurementPlan> {
-  const db = tx ?? prisma;
+  const db = tx ?? (await getTenantPrisma());
+  if (!db) {
+    throw new Error("Tenant not found");
+  }
   const availabilitySummary =
     availability ??
     (await computeAvailabilitySummary({

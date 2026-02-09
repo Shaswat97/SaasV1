@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { recordStockMovement } from "@/lib/stock-service";
 import { recordActivity } from "@/lib/activity";
 import { getAdminContext } from "@/lib/permissions";
+
+export const dynamic = "force-dynamic";
 
 const cycleSchema = z.object({
   skuId: z.string().min(1, "SKU is required"),
@@ -13,6 +15,8 @@ const cycleSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {

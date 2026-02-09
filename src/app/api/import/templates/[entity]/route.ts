@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api-helpers";
 
+export const dynamic = "force-dynamic";
+
 const templates: Record<string, string[]> = {
   vendors: [
     "code",

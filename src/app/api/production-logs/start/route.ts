@@ -1,10 +1,12 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { recordStockMovement } from "@/lib/stock-service";
 import { releaseRawReservationForLine } from "@/lib/sales-order";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+
+export const dynamic = "force-dynamic";
 
 const crewSchema = z.object({
   employeeId: z.string().min(1, "Crew member is required"),
@@ -27,6 +29,8 @@ const startSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -39,7 +43,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return zodError(parsed.error);
 
   const data = parsed.data;
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   if (data.purpose === "ORDER" && !data.salesOrderLineId) {

@@ -1,13 +1,17 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { skuSchema } from "@/lib/validation";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+
 const skuType = "FINISHED" as const;
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const sku = await prisma.sku.findFirst({
     where: { id: params.id, companyId, type: skuType, deletedAt: null }
   });
@@ -18,6 +22,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -33,7 +39,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return jsonError("Finished SKUs cannot have a preferred vendor", 400);
   }
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
   const existing = await prisma.sku.findFirst({
     where: { id: params.id, companyId, type: skuType, deletedAt: null }
@@ -67,7 +73,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const existing = await prisma.sku.findFirst({

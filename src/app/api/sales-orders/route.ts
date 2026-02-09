@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { buildProcurementPlan, computeAvailabilitySummary, reserveRawForSalesOrder } from "@/lib/sales-order";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+
+export const dynamic = "force-dynamic";
 
 const soLineSchema = z.object({
   skuId: z.string().min(1, "SKU is required"),
@@ -23,7 +25,9 @@ const soSchema = z.object({
 });
 
 export async function GET() {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
 
   const orders = await prisma.salesOrder.findMany({
     where: { companyId, deletedAt: null },
@@ -40,6 +44,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -51,7 +57,7 @@ export async function POST(request: Request) {
   const parsed = soSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
   const customer = await prisma.customer.findFirst({
     where: { id: parsed.data.customerId, companyId, deletedAt: null }

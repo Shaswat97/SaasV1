@@ -1,10 +1,14 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { companySchema } from "@/lib/validation";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { toAddressFields } from "@/lib/address";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
 
@@ -17,6 +21,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {

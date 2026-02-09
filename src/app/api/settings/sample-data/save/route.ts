@@ -1,8 +1,10 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { promises as fs } from "fs";
 import path from "path";
+
+export const dynamic = "force-dynamic";
 
 const SAMPLE_PATH = path.join(process.cwd(), "prisma", "sample-data.json");
 
@@ -95,7 +97,9 @@ type SampleData = {
 };
 
 export async function POST() {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
 
   try {
     const [vendors, customers, employees, machines, skus, boms, machineSkus, vendorSkus] = await Promise.all([

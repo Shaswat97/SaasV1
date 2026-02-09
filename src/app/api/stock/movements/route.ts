@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { recordStockMovement } from "@/lib/stock-service";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+
+export const dynamic = "force-dynamic";
 
 const movementSchema = z.object({
   skuId: z.string().min(1, "SKU is required"),
@@ -17,6 +20,8 @@ const movementSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -28,7 +33,7 @@ export async function POST(request: Request) {
   const parsed = movementSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   try {

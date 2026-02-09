@@ -1,10 +1,14 @@
-import { prisma } from "@/lib/prisma";
-import { jsonOk } from "@/lib/api-helpers";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { computeEmployeePerformance } from "@/lib/employee-performance";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const now = new Date();
   const weekCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 

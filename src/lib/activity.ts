@@ -1,5 +1,5 @@
-import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 export type ActivityInput = {
   companyId: string;
@@ -17,8 +17,14 @@ export function getActorFromRequest(request: Request) {
   return { actorName, actorEmployeeId };
 }
 
-export async function recordActivity(input: ActivityInput, tx?: Prisma.TransactionClient) {
-  const db = tx ?? prisma;
+export async function recordActivity(
+  input: ActivityInput,
+  tx?: Prisma.TransactionClient | PrismaClient
+) {
+  const db = tx ?? (await getTenantPrisma());
+  if (!db) {
+    throw new Error("Tenant not found");
+  }
   return db.activityLog.create({
     data: {
       companyId: input.companyId,

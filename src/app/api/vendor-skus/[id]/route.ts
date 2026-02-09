@@ -1,14 +1,18 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+
+export const dynamic = "force-dynamic";
 
 const updateSchema = z.object({
   lastPrice: z.number().nonnegative().optional()
 });
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -20,7 +24,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   const parsed = updateSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const existing = await prisma.vendorSku.findFirst({
@@ -49,7 +53,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const existing = await prisma.vendorSku.findFirst({

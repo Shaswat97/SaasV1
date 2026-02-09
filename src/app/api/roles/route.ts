@@ -1,16 +1,20 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { roleNameSchema } from "@/lib/validation";
 import { z } from "zod";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+
 const rolePayloadSchema = z.object({ name: roleNameSchema });
 
 export async function GET(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
 
   const roles = await prisma.role.findMany({
     where: {
@@ -24,6 +28,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -35,7 +41,7 @@ export async function POST(request: Request) {
   const parsed = rolePayloadSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   try {

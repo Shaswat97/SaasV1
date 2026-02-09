@@ -1,9 +1,13 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: any = {};
   try {
     payload = await request.json();
@@ -11,7 +15,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     payload = {};
   }
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const log = await prisma.productionLog.findFirst({

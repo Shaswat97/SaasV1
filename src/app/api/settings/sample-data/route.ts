@@ -1,9 +1,11 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 import { promises as fs } from "fs";
 import path from "path";
+
+export const dynamic = "force-dynamic";
 
 const SAMPLE_PATH = path.join(process.cwd(), "prisma", "sample-data.json");
 
@@ -142,7 +144,9 @@ async function readSampleFile(): Promise<SampleData | null> {
 }
 
 export async function POST(request: Request) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   try {

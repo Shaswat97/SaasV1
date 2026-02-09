@@ -100,3 +100,36 @@ export async function createTenantRegistryEntry(input: {
     return result.rows[0];
   });
 }
+
+export async function getTenantBySubdomain(subdomain: string): Promise<TenantRegistryRow | null> {
+  return withRegistryClient(async (client) => {
+    const result = await client.query(
+      `SELECT id,
+              subdomain,
+              company_name as "companyName",
+              db_name as "dbName",
+              db_user as "dbUser",
+              db_password as "dbPassword",
+              db_host as "dbHost",
+              db_port as "dbPort",
+              created_at as "createdAt"
+       FROM tenant_registry
+       WHERE subdomain = $1
+       LIMIT 1`,
+      [subdomain]
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+export function buildTenantDatabaseUrl(row: {
+  dbUser: string;
+  dbPassword: string;
+  dbHost: string;
+  dbPort?: number;
+  dbName: string;
+}) {
+  const password = encodeURIComponent(row.dbPassword);
+  const port = row.dbPort ?? 5432;
+  return `postgresql://${row.dbUser}:${password}@${row.dbHost}:${port}/${row.dbName}?schema=public`;
+}

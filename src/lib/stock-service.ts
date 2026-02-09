@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma";
-import type { Prisma, StockLedger } from "@prisma/client";
+import type { Prisma, PrismaClient, StockLedger } from "@prisma/client";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 export type MovementDirection = "IN" | "OUT";
 export type MovementType = "RECEIPT" | "ISSUE" | "TRANSFER" | "ADJUSTMENT" | "PRODUCE";
@@ -44,13 +44,16 @@ async function resolveCostPerUnit({
 
 export async function recordStockMovement(
   input: StockMovementInput,
-  tx?: Prisma.TransactionClient
+  tx?: Prisma.TransactionClient | PrismaClient
 ): Promise<StockLedger> {
   if (input.quantity <= 0) {
     throw new Error("Quantity must be greater than 0");
   }
 
-  const db = tx ?? prisma;
+  const db = tx ?? (await getTenantPrisma());
+  if (!db) {
+    throw new Error("Tenant not found");
+  }
 
   const company = await db.company.findUnique({
     where: { id: input.companyId },
@@ -154,7 +157,7 @@ export async function recordStockMovement(
     return ledger;
   }
 
-  const movement = await prisma.$transaction(async (txLocal) => {
+  const movement = await (db as PrismaClient).$transaction(async (txLocal) => {
     const ledger = await recordStockMovement(input, txLocal);
     return ledger;
   });

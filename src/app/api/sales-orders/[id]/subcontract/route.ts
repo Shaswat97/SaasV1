@@ -1,8 +1,10 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+
+export const dynamic = "force-dynamic";
 
 const subcontractLineSchema = z.object({
   lineId: z.string().min(1, "Sales order line is required"),
@@ -17,6 +19,8 @@ const subcontractSchema = z.object({
 });
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -28,7 +32,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const parsed = subcontractSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
   const order = await prisma.salesOrder.findFirst({
     where: { id: params.id, companyId, deletedAt: null },

@@ -1,10 +1,14 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { companySchema } from "@/lib/validation";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { toAddressFields } from "@/lib/address";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const company = await prisma.company.findFirst({
     where: { id: params.id, deletedAt: null }
   });
@@ -15,6 +19,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -56,6 +62,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const { actorName, actorEmployeeId } = getActorFromRequest(request);
   try {
     const company = await prisma.company.update({

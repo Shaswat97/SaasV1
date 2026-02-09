@@ -1,8 +1,10 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { recordActivity } from "@/lib/activity";
 import { getAdminContext } from "@/lib/permissions";
 import { parseCsv } from "@/lib/csv";
+
+export const dynamic = "force-dynamic";
 
 type ImportError = {
   row: number;
@@ -99,6 +101,8 @@ function emptyRow(row: string[]) {
 }
 
 export async function POST(request: Request, { params }: { params: { entity: string } }) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   const entity = params.entity;
   const headers = templateHeaders[entity];
   if (!headers) {

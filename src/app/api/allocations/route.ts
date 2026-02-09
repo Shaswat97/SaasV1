@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
+
+export const dynamic = "force-dynamic";
 
 const allocationSchema = z.object({
   poLineId: z.string().min(1, "PO line is required"),
@@ -10,6 +12,8 @@ const allocationSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
   try {
@@ -21,7 +25,7 @@ export async function POST(request: Request) {
   const parsed = allocationSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId();
+  const companyId = await getDefaultCompanyId(prisma);
 
   const [poLine, soLine] = await Promise.all([
     prisma.purchaseOrderLine.findFirst({

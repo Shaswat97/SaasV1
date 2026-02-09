@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/prisma";
-import { jsonOk } from "@/lib/api-helpers";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { computeEmployeePerformance } from "@/lib/employee-performance";
 
@@ -10,7 +10,9 @@ const DELAY_DAYS = 7;
 const DOWNTIME_HOURS = 48;
 
 export async function GET() {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const now = new Date();
   const delayCutoff = new Date(now.getTime() - DELAY_DAYS * 24 * 60 * 60 * 1000);
   const downtimeCutoff = new Date(now.getTime() - DOWNTIME_HOURS * 60 * 60 * 1000);

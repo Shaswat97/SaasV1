@@ -1,8 +1,13 @@
-import { prisma } from "@/lib/prisma";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { getDefaultCompanyId } from "@/lib/tenant";
+import { jsonError } from "@/lib/api-helpers";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const companyId = await getDefaultCompanyId();
+  const prisma = await getTenantPrisma();
+  if (!prisma) return jsonError("Tenant not found", 404);
+  const companyId = await getDefaultCompanyId(prisma);
   const { searchParams } = new URL(request.url);
   const includePackaging = !["0", "false", "no"].includes((searchParams.get("includePackaging") ?? "").toLowerCase());
 
