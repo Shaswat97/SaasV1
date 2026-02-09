@@ -10,7 +10,7 @@ export function SectionHeader({ title, subtitle, actions }: SectionHeaderProps) 
   return (
     <div className="flex flex-col gap-4 border-b border-border/60 pb-6 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <p className="text-xs uppercase tracking-[0.3em] text-text-muted">RAG Industries</p>
+        <p className="text-xs uppercase tracking-[0.3em] text-text-muted">Techno Synergians</p>
         <h1 className="mt-3 text-3xl font-semibold text-balance">{title}</h1>
         {subtitle ? <p className="mt-3 text-sm text-text-muted">{subtitle}</p> : null}
       </div>

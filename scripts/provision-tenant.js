@@ -66,6 +66,12 @@ async function main() {
   }
 
   try {
+    await admin.query(`GRANT "${dbUser}" TO CURRENT_USER`);
+  } catch (error) {
+    if (error && error.code !== "42710") throw error;
+  }
+
+  try {
     await admin.query(`CREATE DATABASE "${dbName}" OWNER "${dbUser}"`);
   } catch (error) {
     if (error && error.code !== "42P04") throw error;

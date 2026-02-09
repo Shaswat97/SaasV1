@@ -1,6 +1,6 @@
-# RAG Industries Manufacturing Ops (Prototype)
+# Techno Synergians Manufacturing Ops
 
-Single-tenant manufacturing SaaS prototype for RAG Industries. Built with Next.js App Router, TypeScript, Tailwind, and Prisma (PostgreSQL).
+Single-tenant manufacturing SaaS product by Techno Synergians. Built with Next.js App Router, TypeScript, Tailwind, and Prisma (PostgreSQL).
 
 ## What We Built
 

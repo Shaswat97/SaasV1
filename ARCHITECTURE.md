@@ -1,10 +1,10 @@
-# Architecture & Deployment Notes (RAG Industries Manufacturing Ops)
+# Architecture & Deployment Notes (Techno Synergians Manufacturing Ops)
 
 This document captures the full context of what we’ve built, how the system is structured, how the database works, how it’s hosted, and the long‑term SaaS goal.
 
 ## 1) Product Goal
 
-Build a single‑tenant manufacturing operations SaaS for RAG Industries, with the long‑term goal of running it as a multi‑tenant system (one subdomain + database per client).
+Build a single‑tenant manufacturing operations SaaS by Techno Synergians, with the long‑term goal of running it as a multi‑tenant system (one subdomain + database per client).
 
 Core goals:
 - Master data management (SKUs, BOMs, machines, routing, vendors, customers).

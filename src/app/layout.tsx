@@ -15,8 +15,8 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "RAG Industries Ops",
-  description: "Manufacturing operations prototype for RAG Industries"
+  title: "Techno Synergians Ops",
+  description: "Manufacturing operations platform by Techno Synergians"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

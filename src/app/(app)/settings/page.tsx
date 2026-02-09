@@ -10,7 +10,7 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-8">
       <SectionHeader
         title="Settings"
-        subtitle="Company configuration, master data, and permissions for RAG Industries."
+        subtitle="Company configuration, master data, and permissions for Techno Synergians."
         actions={<Button variant="secondary">Invite User</Button>}
       />
 

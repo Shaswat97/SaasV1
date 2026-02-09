@@ -8,7 +8,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="grid min-h-screen lg:grid-cols-[300px_1fr]">
         <aside className="panel-strong m-4 flex flex-col gap-6 overflow-y-auto p-6 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)]">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-text-muted">RAG Industries</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-text-muted">Techno Synergians</p>
             <h2 className="mt-3 text-2xl font-semibold">Manufacturing Ops</h2>
             <p className="mt-2 text-sm text-text-muted">
               Single-tenant operating system for planning, execution, and financial control.
