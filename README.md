@@ -1,6 +1,6 @@
 # RAG Industries Manufacturing Ops (Prototype)
 
-Single-tenant manufacturing SaaS prototype for RAG Industries. Built with Next.js App Router, TypeScript, Tailwind, and Prisma (SQLite).
+Single-tenant manufacturing SaaS prototype for RAG Industries. Built with Next.js App Router, TypeScript, Tailwind, and Prisma (PostgreSQL).
 
 ## What We Built
 
@@ -51,7 +51,21 @@ Single-tenant manufacturing SaaS prototype for RAG Industries. Built with Next.j
 npm install
 ```
 
-2. Run migrations + seed:
+2. Configure Postgres:
+
+- Create a local database (example):
+
+```bash
+createdb presentrag
+```
+
+- Set `DATABASE_URL` in `.env`:
+
+```bash
+DATABASE_URL="postgresql://<user>:<password>@localhost:5432/presentrag?schema=public"
+```
+
+3. Run migrations + seed:
 
 ```bash
 npm run prisma:generate
@@ -59,7 +73,7 @@ npm run prisma:migrate
 npm run prisma:seed
 ```
 
-3. Start the dev server:
+4. Start the dev server:
 
 ```bash
 npm run dev
@@ -84,7 +98,7 @@ node scripts/export-seed-data.js
 
 ## Notes
 
-- Local-only development setup (SQLite in `prisma/dev.db`).
+- Local development uses PostgreSQL via `DATABASE_URL`.
 - Base design tokens live in `src/app/globals.css`.
 - App routes live under `src/app/(app)`.
 - Master Data is located in Settings (not in the main navigation).
