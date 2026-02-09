@@ -535,17 +535,24 @@ export default function PurchasingPage() {
 
   const vendorLeadTime = useMemo(() => {
     if (!vendorId) return null;
-    let latest: { receivedAt: string; orderDate: string; poNumber?: string | null } | null = null;
-    orders
-      .filter((order) => order.vendorId === vendorId && order.receipts && order.receipts.length)
-      .forEach((order) => {
-        order.receipts?.forEach((receipt) => {
-          if (!latest || new Date(receipt.receivedAt) > new Date(latest.receivedAt)) {
-            latest = { receivedAt: receipt.receivedAt, orderDate: order.orderDate, poNumber: order.poNumber };
-          }
-        });
-      });
-    if (!latest) return null;
+    const receiptCandidates = orders
+      .filter((order) => order.vendorId === vendorId)
+      .map((order) => {
+        const receipt = latestReceipt(order);
+        if (!receipt) return null;
+        return {
+          receivedAt: receipt.receivedAt,
+          orderDate: order.orderDate,
+          poNumber: order.poNumber ?? null
+        };
+      })
+      .filter(
+        (item): item is { receivedAt: string; orderDate: string; poNumber: string | null } => item !== null
+      );
+    if (!receiptCandidates.length) return null;
+    const latest = receiptCandidates.reduce((current, item) => {
+      return new Date(item.receivedAt) > new Date(current.receivedAt) ? item : current;
+    }, receiptCandidates[0]);
     const diffMs = new Date(latest.receivedAt).getTime() - new Date(latest.orderDate).getTime();
     const days = Math.max(1, Math.round(diffMs / 86400000));
     return { ...latest, days };
