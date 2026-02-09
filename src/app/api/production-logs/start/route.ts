@@ -124,10 +124,10 @@ export async function POST(request: Request) {
       }
 
       const zones = await tx.zone.findMany({
-        where: { companyId, deletedAt: null, type: { in: ["RAW_MATERIAL", "PROCESSING_WIP"] } }
+        where: { companyId, deletedAt: null, type: { in: ["RAW_MATERIAL", "PROCESSING_WIP", "PRODUCTION", "WIP"] } }
       });
       const rawZone = zones.find((zone) => zone.type === "RAW_MATERIAL");
-      const wipZone = zones.find((zone) => zone.type === "PROCESSING_WIP");
+      const wipZone = zones.find((zone) => ["PROCESSING_WIP", "PRODUCTION", "WIP"].includes(zone.type));
       if (!rawZone || !wipZone) {
         throw new Error("Raw and WIP zones must exist before starting production");
       }

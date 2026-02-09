@@ -477,13 +477,22 @@ export async function autoDraftPurchaseOrders({
 
   const allocationRows = await tx.purchaseOrderAllocation.findMany({
     where: { soLineId: { in: lines.map((line) => line.id) } },
-    include: { poLine: { select: { skuId: true } } }
+    include: {
+      poLine: {
+        select: {
+          skuId: true,
+          purchaseOrder: { select: { status: true, deletedAt: true } }
+        }
+      }
+    }
   });
 
   const allocatedByRaw = new Map<string, number>();
   const allocatedByLineRaw = new Map<string, Map<string, number>>();
 
   allocationRows.forEach((allocation) => {
+    if (allocation.poLine.purchaseOrder?.deletedAt) return;
+    if (allocation.poLine.purchaseOrder?.status === "CANCELLED") return;
     const rawSkuId = allocation.poLine.skuId;
     allocatedByRaw.set(rawSkuId, (allocatedByRaw.get(rawSkuId) ?? 0) + allocation.quantity);
     if (!allocatedByLineRaw.has(allocation.soLineId)) {

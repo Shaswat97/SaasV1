@@ -64,9 +64,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   try {
     const result = await prisma.$transaction(async (tx) => {
       const zones = await tx.zone.findMany({
-        where: { companyId, deletedAt: null, type: { in: ["PROCESSING_WIP", "FINISHED", "SCRAP"] } }
+        where: { companyId, deletedAt: null, type: { in: ["PROCESSING_WIP", "PRODUCTION", "WIP", "FINISHED", "SCRAP"] } }
       });
-      const wipZone = zones.find((zone) => zone.type === "PROCESSING_WIP");
+      const wipZone = zones.find((zone) => ["PROCESSING_WIP", "PRODUCTION", "WIP"].includes(zone.type));
       const finishedZone = zones.find((zone) => zone.type === "FINISHED");
       const scrapZone = zones.find((zone) => zone.type === "SCRAP");
       if (!wipZone || !finishedZone || !scrapZone) {
