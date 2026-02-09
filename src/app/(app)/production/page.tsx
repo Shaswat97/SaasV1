@@ -1,0 +1,971 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { Badge } from "@/components/Badge";
+import { Button } from "@/components/Button";
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/Card";
+import { DataTable } from "@/components/DataTable";
+import { Input } from "@/components/Input";
+import { SectionHeader } from "@/components/SectionHeader";
+import { Select } from "@/components/Select";
+import { ToastViewport } from "@/components/ToastViewport";
+import { apiGet, apiSend } from "@/lib/api-client";
+import { useToast } from "@/lib/use-toast";
+
+const statusBadge: Record<string, { label: string; variant: "neutral" | "info" | "success" | "warning" | "danger" }> = {
+  OPEN: { label: "Open", variant: "warning" },
+  CLOSED: { label: "Closed", variant: "success" },
+  CANCELLED: { label: "Cancelled", variant: "danger" }
+};
+
+const purposeOptions = [
+  { value: "ORDER", label: "Order" },
+  { value: "STOCK", label: "Stock Build" }
+];
+
+const crewRoleOptions = [
+  { value: "OPERATOR", label: "Operator" },
+  { value: "SUPERVISOR", label: "Supervisor" },
+  { value: "HELPER", label: "Helper" }
+];
+
+type Machine = { id: string; code: string; name: string };
+
+type Employee = { id: string; code: string; name: string };
+
+type FinishedSku = { id: string; code: string; name: string; unit: string };
+
+type RawSku = { id: string; code: string; name: string; unit: string };
+
+type Bom = {
+  finishedSkuId: string;
+  version: number;
+  lines: Array<{ rawSkuId: string; quantity: number; scrapPct?: number | null; rawSku: RawSku }>;
+};
+
+type RoutingStep = {
+  id: string;
+  machineId: string;
+  sequence: number;
+  capacityPerMinute: number;
+  machine: Machine;
+};
+
+type Routing = {
+  id: string;
+  finishedSkuId: string;
+  steps: RoutingStep[];
+};
+
+type BacklogLine = {
+  id: string;
+  soNumber: string;
+  status: string;
+  customer: string;
+  skuId: string;
+  skuCode: string;
+  skuName: string;
+  unit: string;
+  orderedQty: number;
+  producedQty: number;
+  openQty: number;
+};
+
+type ProductionLog = {
+  id: string;
+  purpose: string;
+  status: string;
+  plannedQty: number;
+  startAt: string;
+  closeAt?: string | null;
+  goodQty: number;
+  rejectQty: number;
+  scrapQty: number;
+  expectedRawQty?: number | null;
+  actualRawQty?: number | null;
+  expectedRawCost?: number | null;
+  actualRawCost?: number | null;
+  materialVariancePct?: number | null;
+  oeePct?: number | null;
+  notes?: string | null;
+  closeNotes?: string | null;
+  crewAssignments?: Array<{
+    id: string;
+    role: string;
+    startAt: string;
+    endAt?: string | null;
+    employee: Employee;
+  }>;
+  consumptions?: Array<{ rawSkuId: string; quantity: number; rawSku: RawSku }>;
+  finishedSku: FinishedSku;
+  machine: Machine;
+  operator?: Employee | null;
+  supervisor?: Employee | null;
+  salesOrderLine?: {
+    id: string;
+    salesOrder: { soNumber?: string | null; customer: { name: string } };
+  } | null;
+};
+
+type RawConsumptionRow = {
+  rawSkuId: string;
+  quantity: string;
+};
+
+type CrewFormRow = {
+  employeeId: string;
+  role: string;
+  startAt: string;
+};
+
+type CrewCloseRow = {
+  crewId: string;
+  employeeName: string;
+  role: string;
+  startAt: string;
+  endAt: string;
+};
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(start?: string | null, end?: string | null) {
+  if (!start) return "—";
+  if (!end) return "In progress";
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) return "—";
+  const minutes = Math.round((endMs - startMs) / 60000);
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  if (hours > 0) return `${hours}h ${remaining}m`;
+  return `${remaining}m`;
+}
+
+function formatOrderNumber(value?: string | null, fallbackId?: string) {
+  if (value && value.trim().length > 0) return value;
+  if (!fallbackId) return "—";
+  const suffix = fallbackId.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
+  return suffix ? `SO-${suffix}` : "—";
+}
+
+function formatMinutesToClock(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const totalMinutes = Math.max(0, Math.round(value));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
+function toLocalInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+export default function ProductionPage() {
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [finishedSkus, setFinishedSkus] = useState<FinishedSku[]>([]);
+  const [rawSkus, setRawSkus] = useState<RawSku[]>([]);
+  const [boms, setBoms] = useState<Bom[]>([]);
+  const [routings, setRoutings] = useState<Routing[]>([]);
+  const [backlog, setBacklog] = useState<BacklogLine[]>([]);
+  const [logs, setLogs] = useState<ProductionLog[]>([]);
+  const [includeCancelled, setIncludeCancelled] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const [purpose, setPurpose] = useState("ORDER");
+  const [orderLineId, setOrderLineId] = useState("");
+  const [stockSkuId, setStockSkuId] = useState("");
+  const [machineId, setMachineId] = useState("");
+  const [plannedQty, setPlannedQty] = useState("");
+  const [startAt, setStartAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [crewRows, setCrewRows] = useState<CrewFormRow[]>([]);
+
+  const [closeLogId, setCloseLogId] = useState("");
+  const [goodQty, setGoodQty] = useState("");
+  const [rejectQty, setRejectQty] = useState("");
+  const [scrapQty, setScrapQty] = useState("");
+  const [closeAt, setCloseAt] = useState("");
+  const [closeNotes, setCloseNotes] = useState("");
+  const [closeCrewRows, setCloseCrewRows] = useState<CrewCloseRow[]>([]);
+  const [rawConsumptions, setRawConsumptions] = useState<RawConsumptionRow[]>([]);
+
+  const { toasts, push, remove } = useToast();
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [machineData, employeeData, skuData, rawSkuData, bomData, routingData, backlogData, logData] = await Promise.all([
+        apiGet<Machine[]>("/api/machines"),
+        apiGet<Employee[]>("/api/employees"),
+        apiGet<FinishedSku[]>("/api/finished-skus"),
+        apiGet<RawSku[]>("/api/raw-skus"),
+        apiGet<Bom[]>("/api/boms"),
+        apiGet<Routing[]>("/api/routings"),
+        apiGet<BacklogLine[]>("/api/production-logs/backlog"),
+        apiGet<ProductionLog[]>(`/api/production-logs?includeCancelled=${includeCancelled ? "true" : "false"}`)
+      ]);
+      setMachines(machineData);
+      setEmployees(employeeData);
+      setFinishedSkus(skuData);
+      setRawSkus(rawSkuData);
+      setBoms(bomData);
+      setRoutings(routingData);
+      setBacklog(backlogData);
+      setLogs(logData);
+
+      if (!machineId && machineData[0]) setMachineId(machineData[0].id);
+      if (!stockSkuId && skuData[0]) setStockSkuId(skuData[0].id);
+      if (!orderLineId && backlogData[0]) setOrderLineId(backlogData[0].id);
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to load production data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeCancelled]);
+
+  const selectedLine = useMemo(
+    () => backlog.find((line) => line.id === orderLineId),
+    [backlog, orderLineId]
+  );
+
+  const selectedSkuId = useMemo(() => {
+    if (purpose === "ORDER") return selectedLine?.skuId ?? "";
+    return stockSkuId;
+  }, [purpose, selectedLine, stockSkuId]);
+
+  const routingForSelected = useMemo(
+    () => routings.find((routing) => routing.finishedSkuId === selectedSkuId) ?? null,
+    [routings, selectedSkuId]
+  );
+
+  const machineOptions = useMemo(() => {
+    if (!routingForSelected || routingForSelected.steps.length === 0) return [];
+    const unique = new Map<string, Machine>();
+    routingForSelected.steps.forEach((step) => {
+      unique.set(step.machineId, step.machine);
+    });
+    return Array.from(unique.values()).map((machine) => ({
+      value: machine.id,
+      label: `${machine.code} · ${machine.name}`
+    }));
+  }, [routingForSelected]);
+
+  const machineCapacityMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!routingForSelected) return map;
+    routingForSelected.steps.forEach((step) => {
+      const existing = map.get(step.machineId);
+      if (existing == null) {
+        map.set(step.machineId, step.capacityPerMinute);
+      } else {
+        map.set(step.machineId, Math.min(existing, step.capacityPerMinute));
+      }
+    });
+    return map;
+  }, [routingForSelected]);
+
+  const employeeOptions = useMemo(
+    () => employees.map((employee) => ({ value: employee.id, label: `${employee.code} · ${employee.name}` })),
+    [employees]
+  );
+
+  const skuOptions = useMemo(
+    () => finishedSkus.map((sku) => ({ value: sku.id, label: `${sku.code} · ${sku.name}` })),
+    [finishedSkus]
+  );
+
+  const rawSkuOptions = useMemo(
+    () => rawSkus.map((sku) => ({ value: sku.id, label: `${sku.code} · ${sku.name}` })),
+    [rawSkus]
+  );
+
+  const rawSkuMap = useMemo(() => new Map(rawSkus.map((sku) => [sku.id, sku])), [rawSkus]);
+
+  const bomMap = useMemo(() => {
+    const map = new Map<string, Bom>();
+    boms
+      .slice()
+      .sort((a, b) => b.version - a.version)
+      .forEach((bom) => {
+        if (!map.has(bom.finishedSkuId)) {
+          map.set(bom.finishedSkuId, bom);
+        }
+      });
+    return map;
+  }, [boms]);
+
+  const orderLineOptions = useMemo(
+    () =>
+      backlog.map((line) => ({
+        value: line.id,
+        label: `${formatOrderNumber(line.soNumber, line.id)} · ${line.customer} · ${line.skuCode} (${line.openQty} ${line.unit})`
+      })),
+    [backlog]
+  );
+
+  const openLogs = useMemo(() => logs.filter((log) => log.status === "OPEN"), [logs]);
+
+  const openLogOptions = useMemo(
+    () =>
+      openLogs.map((log) => ({
+        value: log.id,
+        label: `${log.finishedSku.code} · ${log.machine.code} · ${log.plannedQty - (log.goodQty + log.rejectQty + log.scrapQty)} ${log.finishedSku.unit} remaining`
+      })),
+    [openLogs]
+  );
+
+  const selectedCloseLog = useMemo(() => logs.find((log) => log.id === closeLogId), [logs, closeLogId]);
+
+  useEffect(() => {
+    if (!machineOptions.length) {
+      if (machineId) setMachineId("");
+      return;
+    }
+    if (!machineOptions.some((option) => option.value === machineId)) {
+      setMachineId(machineOptions[0].value);
+    }
+  }, [machineOptions, machineId]);
+
+  useEffect(() => {
+    if (!openLogs.length) {
+      if (closeLogId) setCloseLogId("");
+      return;
+    }
+    if (!openLogs.some((log) => log.id === closeLogId)) {
+      setCloseLogId(openLogs[0].id);
+    }
+  }, [openLogs, closeLogId]);
+
+  useEffect(() => {
+    if (!selectedCloseLog) {
+      setCloseCrewRows([]);
+      setRawConsumptions([]);
+      return;
+    }
+    const rows =
+      selectedCloseLog.crewAssignments?.map((entry) => ({
+        crewId: entry.id,
+        employeeName: entry.employee.name,
+        role: entry.role,
+        startAt: toLocalInput(entry.startAt),
+        endAt: toLocalInput(entry.endAt)
+      })) ?? [];
+    setCloseCrewRows(rows);
+    if (selectedCloseLog.consumptions && selectedCloseLog.consumptions.length) {
+      setRawConsumptions(
+        selectedCloseLog.consumptions.map((entry) => ({
+          rawSkuId: entry.rawSkuId,
+          quantity: entry.quantity.toString()
+        }))
+      );
+      return;
+    }
+    const bom = bomMap.get(selectedCloseLog.finishedSku.id);
+    if (!bom) {
+      setRawConsumptions([]);
+      return;
+    }
+    const baseQty = selectedCloseLog.plannedQty ?? 0;
+    setRawConsumptions(
+      bom.lines.map((line) => ({
+        rawSkuId: line.rawSkuId,
+        quantity: baseQty ? (baseQty * line.quantity).toString() : ""
+      }))
+    );
+  }, [selectedCloseLog, bomMap]);
+
+  useEffect(() => {
+    if (!closeAt) return;
+    setCloseCrewRows((prev) =>
+      prev.map((row) => (row.endAt ? row : { ...row, endAt: closeAt }))
+    );
+  }, [closeAt]);
+
+  function addCrewRow() {
+    if (!employees.length) {
+      push("error", "Add employees before assigning crew");
+      return;
+    }
+    setCrewRows((prev) => [
+      ...prev,
+      {
+        employeeId: employees[0].id,
+        role: "OPERATOR",
+        startAt
+      }
+    ]);
+  }
+
+  function addRawConsumptionRow() {
+    if (!rawSkus.length) {
+      push("error", "Add raw SKUs before logging consumption");
+      return;
+    }
+    setRawConsumptions((prev) => [...prev, { rawSkuId: rawSkus[0].id, quantity: "" }]);
+  }
+
+  async function startLog(event: FormEvent) {
+    event.preventDefault();
+
+    if (!machineId) {
+      if (!routingForSelected || routingForSelected.steps.length === 0) {
+        push("error", "No routing steps mapped for this SKU. Map routing before starting production.");
+      } else {
+        push("error", "Select a machine");
+      }
+      return;
+    }
+
+    if (purpose === "ORDER" && !orderLineId) {
+      push("error", "Select a sales order line");
+      return;
+    }
+
+    if (purpose === "STOCK" && !stockSkuId) {
+      push("error", "Select a finished SKU");
+      return;
+    }
+
+    const qty = Number(plannedQty);
+    if (!qty || qty <= 0) {
+      push("error", "Planned quantity must be greater than 0");
+      return;
+    }
+
+    const crewPayload = crewRows
+      .filter((row) => row.employeeId)
+      .map((row) => ({
+        employeeId: row.employeeId,
+        role: row.role,
+        startAt: row.startAt ? new Date(row.startAt).toISOString() : undefined
+      }));
+    if (crewRows.length > 0 && crewPayload.length === 0) {
+      push("error", "Add at least one crew member or remove the empty row");
+      return;
+    }
+
+    try {
+      await apiSend("/api/production-logs/start", "POST", {
+        purpose,
+        salesOrderLineId: purpose === "ORDER" ? orderLineId : undefined,
+        finishedSkuId: purpose === "STOCK" ? stockSkuId : undefined,
+        machineId,
+        plannedQty: qty,
+        startAt: startAt ? new Date(startAt).toISOString() : undefined,
+        crew: crewPayload.length ? crewPayload : undefined,
+        notes: notes || undefined
+      });
+      push("success", "Production log started");
+      setPlannedQty("");
+      setStartAt("");
+      setNotes("");
+      setCrewRows([]);
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to start production");
+    }
+  }
+
+  async function closeLog(event: FormEvent) {
+    event.preventDefault();
+    if (!closeLogId) {
+      push("error", "Select a log to close");
+      return;
+    }
+
+    const good = Number(goodQty || 0);
+    const reject = Number(rejectQty || 0);
+    const scrap = Number(scrapQty || 0);
+    const consumptionPayload = rawConsumptions
+      .filter((row) => row.rawSkuId)
+      .map((row) => ({ rawSkuId: row.rawSkuId, quantity: Number(row.quantity || 0) }));
+    const rawSkuSet = new Set(consumptionPayload.map((row) => row.rawSkuId));
+    if (rawSkuSet.size !== consumptionPayload.length) {
+      push("error", "Duplicate raw SKUs are not allowed in consumption");
+      return;
+    }
+    if (consumptionPayload.some((row) => row.quantity < 0)) {
+      push("error", "Raw consumption quantities cannot be negative");
+      return;
+    }
+
+    try {
+      await apiSend(`/api/production-logs/${closeLogId}/close`, "POST", {
+        goodQty: good,
+        rejectQty: reject,
+        scrapQty: scrap,
+        closeAt: closeAt ? new Date(closeAt).toISOString() : undefined,
+        crew: closeCrewRows.map((row) => ({
+          crewId: row.crewId,
+          endAt: row.endAt ? new Date(row.endAt).toISOString() : undefined
+        })),
+        closeNotes: closeNotes || undefined,
+        rawConsumptions: consumptionPayload.length ? consumptionPayload : undefined
+      });
+      push("success", "Production log closed");
+      setCloseLogId("");
+      setGoodQty("");
+      setRejectQty("");
+      setScrapQty("");
+      setCloseAt("");
+      setCloseNotes("");
+      setCloseCrewRows([]);
+      setRawConsumptions([]);
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to close log");
+    }
+  }
+
+  async function cancelLog(logId: string) {
+    try {
+      await apiSend(`/api/production-logs/${logId}`, "DELETE", { reason: "Deleted in UI" });
+      push("success", "Log deleted");
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to delete log");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <ToastViewport toasts={toasts} onDismiss={remove} />
+      <SectionHeader
+        title="Production"
+        subtitle="Log daily production starts, closes, and keep WIP and finished stock aligned."
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1.2fr_1.8fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Start Production Log</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form className="space-y-4" onSubmit={startLog}>
+              <Select label="Purpose" value={purpose} onChange={(event) => setPurpose(event.target.value)} options={purposeOptions} />
+              {purpose === "ORDER" ? (
+                <Select
+                  label="Sales Order Line"
+                  value={orderLineId}
+                  onChange={(event) => setOrderLineId(event.target.value)}
+                  options={orderLineOptions}
+                  required
+                />
+              ) : (
+                <Select
+                  label="Finished SKU"
+                  value={stockSkuId}
+                  onChange={(event) => setStockSkuId(event.target.value)}
+                  options={skuOptions}
+                  required
+                />
+              )}
+              {purpose === "ORDER" && selectedLine ? (
+                <div className="rounded-2xl border border-border/70 bg-bg-subtle/80 p-3 text-xs text-text-muted">
+                  Open qty: {selectedLine.openQty} {selectedLine.unit} · Order {formatOrderNumber(selectedLine.soNumber, selectedLine.id)}
+                </div>
+              ) : null}
+              <Select
+                label="Machine"
+                value={machineId}
+                onChange={(event) => setMachineId(event.target.value)}
+                options={machineOptions}
+                required
+              />
+              {routingForSelected && routingForSelected.steps.length === 0 ? (
+                <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-3 text-xs text-text-muted">
+                  No routing steps mapped for this SKU. Map in Settings &gt; Master Data &gt; Finished SKUs &gt; Routing Steps.
+                </div>
+              ) : null}
+              <Input
+                label="Planned Quantity"
+                type="number"
+                value={plannedQty}
+                onChange={(event) => setPlannedQty(event.target.value)}
+                required
+              />
+              {machineId && machineCapacityMap.has(machineId) ? (
+                <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-3 text-xs text-text-muted">
+                  {(() => {
+                    const capacity = machineCapacityMap.get(machineId) ?? 0;
+                    if (capacity <= 0) {
+                      return <div>Capacity missing for this machine and SKU. Update routing capacity.</div>;
+                    }
+                    const perHour = capacity * 60;
+                    const planned = Number(plannedQty || 0);
+                    const requiredMinutes = planned > 0 && capacity > 0 ? planned / capacity : 0;
+                    const shiftOutput = capacity * 480;
+                    return (
+                      <>
+                        <div>Capacity: {capacity.toFixed(2).replace(/\\.00$/, "")} units/min ({perHour.toFixed(0)} units/hr).</div>
+                        <div>Estimated output in 8h shift: {shiftOutput.toFixed(0)} units.</div>
+                        {planned > 0 ? (
+                          <div>Estimated shift length for planned qty (HH:MM): {formatMinutesToClock(requiredMinutes)}.</div>
+                        ) : (
+                          <div>Enter planned qty to estimate required shift length.</div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
+              <Input
+                label="Start Time"
+                type="datetime-local"
+                value={startAt}
+                onChange={(event) => setStartAt(event.target.value)}
+              />
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-text">Crew Assignment</p>
+                  <Button type="button" variant="ghost" onClick={addCrewRow}>
+                    Add Crew
+                  </Button>
+                </div>
+                {crewRows.length === 0 ? (
+                  <p className="text-xs text-text-muted">Add the operators and supervisors assigned to this machine.</p>
+                ) : (
+                  crewRows.map((row, index) => (
+                    <div key={`${row.employeeId}-${index}`} className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr]">
+                      <Select
+                        label="Employee"
+                        value={row.employeeId}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setCrewRows((prev) =>
+                            prev.map((item, idx) => (idx === index ? { ...item, employeeId: value } : item))
+                          );
+                        }}
+                        options={employeeOptions}
+                      />
+                      <Select
+                        label="Role"
+                        value={row.role}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setCrewRows((prev) =>
+                            prev.map((item, idx) => (idx === index ? { ...item, role: value } : item))
+                          );
+                        }}
+                        options={crewRoleOptions}
+                      />
+                      <Input
+                        label="Crew Start"
+                        type="datetime-local"
+                        value={row.startAt}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setCrewRows((prev) =>
+                            prev.map((item, idx) => (idx === index ? { ...item, startAt: value } : item))
+                          );
+                        }}
+                      />
+                      <div className="lg:col-span-3 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setCrewRows((prev) => prev.filter((_, idx) => idx !== index))}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <Input
+                label="Notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Shift notes, setup info"
+              />
+              <Button type="submit">Start Log</Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Close Production Log</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <form className="space-y-4" onSubmit={closeLog}>
+                <Select
+                  label="Open Log"
+                  value={closeLogId}
+                  onChange={(event) => setCloseLogId(event.target.value)}
+                  options={openLogOptions}
+                  required
+                />
+                {closeCrewRows.length ? (
+                  <div className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                    <p className="text-sm font-medium text-text">Crew End Time</p>
+                    <div className="mt-3 space-y-3">
+                      {closeCrewRows.map((row, index) => (
+                        <div key={row.crewId} className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr]">
+                          <div>
+                            <p className="text-sm font-medium">{row.employeeName}</p>
+                            <p className="text-xs text-text-muted">{row.role}</p>
+                          </div>
+                          <Input label="Start" type="datetime-local" value={row.startAt} readOnly />
+                          <Input
+                            label="End"
+                            type="datetime-local"
+                            value={row.endAt}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setCloseCrewRows((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, endAt: value } : item))
+                              );
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <Input label="Good Qty" type="number" value={goodQty} onChange={(event) => setGoodQty(event.target.value)} />
+                <Input
+                  label="Reject Qty"
+                  type="number"
+                  value={rejectQty}
+                  onChange={(event) => setRejectQty(event.target.value)}
+                />
+                <Input
+                  label="Scrap Qty"
+                  type="number"
+                  value={scrapQty}
+                  onChange={(event) => setScrapQty(event.target.value)}
+                />
+                <div className="space-y-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-text">Raw Consumption (Actual)</p>
+                    <Button type="button" variant="ghost" onClick={addRawConsumptionRow}>
+                      Add Raw
+                    </Button>
+                  </div>
+                  {rawConsumptions.length === 0 ? (
+                    <p className="text-xs text-text-muted">No raw consumption recorded yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {rawConsumptions.map((row, index) => {
+                        const raw = rawSkuMap.get(row.rawSkuId);
+                        return (
+                          <div
+                            key={`${row.rawSkuId}-${index}`}
+                            className="grid gap-3 lg:grid-cols-[2fr_1fr_auto]"
+                          >
+                            <Select
+                              label="Raw SKU"
+                              value={row.rawSkuId}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setRawConsumptions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, rawSkuId: value } : item))
+                                );
+                              }}
+                              options={rawSkuOptions}
+                            />
+                            <Input
+                              label={`Quantity${raw ? ` (${raw.unit})` : ""}`}
+                              type="number"
+                              value={row.quantity}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setRawConsumptions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
+                                );
+                              }}
+                            />
+                            <div className="flex items-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setRawConsumptions((prev) => prev.filter((_, idx) => idx !== index))}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-xs text-text-muted">
+                    Enter total actual raw consumed for this log. Adjustments apply when the log is fully closed.
+                  </p>
+                </div>
+                <Input
+                  label="Close Time"
+                  type="datetime-local"
+                  value={closeAt}
+                  onChange={(event) => setCloseAt(event.target.value)}
+                />
+                <Input
+                  label="Close Notes"
+                  value={closeNotes}
+                  onChange={(event) => setCloseNotes(event.target.value)}
+                  placeholder="Quality notes, shift handoff"
+                />
+                <Button type="submit">Close Log</Button>
+              </form>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Production Backlog</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <DataTable
+                columns={[
+                  { key: "order", label: "Order" },
+                  { key: "customer", label: "Customer" },
+                  { key: "sku", label: "SKU" },
+                  { key: "open", label: "Open Qty", align: "right" },
+                  { key: "status", label: "Status" }
+                ]}
+                rows={backlog.map((line) => ({
+                  order: line.soNumber,
+                  customer: line.customer,
+                  sku: `${line.skuCode} · ${line.skuName}`,
+                  open: `${line.openQty} ${line.unit}`,
+                  status: line.status
+                }))}
+                emptyLabel={loading ? "Loading backlog..." : "No production backlog."}
+              />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Recent Production Logs</CardTitle>
+            <label className="flex items-center gap-2 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={includeCancelled}
+                onChange={(event) => setIncludeCancelled(event.target.checked)}
+              />
+              Show cancelled
+            </label>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <DataTable
+            columns={[
+              { key: "date", label: "Date" },
+              { key: "start", label: "Start" },
+              { key: "close", label: "Close" },
+              { key: "purpose", label: "Purpose" },
+              { key: "sku", label: "SKU" },
+              { key: "machine", label: "Machine" },
+              { key: "crew", label: "Crew", align: "right" },
+              { key: "planned", label: "Planned", align: "right" },
+              { key: "good", label: "Good", align: "right" },
+              { key: "scrap", label: "Scrap", align: "right" },
+              { key: "materialVar", label: "Material Var%", align: "right" },
+              { key: "rate", label: "Units/hr", align: "right" },
+              { key: "oee", label: "OEE", align: "right" },
+              { key: "crewTime", label: "Crew Time" },
+              { key: "notes", label: "Notes" },
+              { key: "status", label: "Status" },
+              { key: "actions", label: "" }
+            ]}
+            rows={logs.map((log) => ({
+              date: formatDate(log.startAt),
+              start: formatTime(log.startAt),
+              close: formatTime(log.closeAt),
+              purpose: log.purpose === "ORDER" ? "Order" : "Stock",
+              sku: `${log.finishedSku.code} · ${log.finishedSku.name}`,
+              machine: log.machine.name,
+              crew: log.crewAssignments?.length
+                ? (() => {
+                    const counts = log.crewAssignments.reduce(
+                      (acc, entry) => {
+                        if (entry.role === "OPERATOR") acc.OPERATOR += 1;
+                        else if (entry.role === "SUPERVISOR") acc.SUPERVISOR += 1;
+                        else acc.HELPER += 1;
+                        return acc;
+                      },
+                      { OPERATOR: 0, SUPERVISOR: 0, HELPER: 0 }
+                    );
+                    const parts = [];
+                    if (counts.OPERATOR) parts.push(`Op ${counts.OPERATOR}`);
+                    if (counts.SUPERVISOR) parts.push(`Sup ${counts.SUPERVISOR}`);
+                    if (counts.HELPER) parts.push(`Help ${counts.HELPER}`);
+                    return parts.join(" · ");
+                  })()
+                : "—",
+              planned: `${log.plannedQty} ${log.finishedSku.unit}`,
+              good: log.goodQty ? `${log.goodQty}` : "—",
+              scrap: log.scrapQty || log.rejectQty ? `${log.scrapQty + log.rejectQty}` : "—",
+              materialVar:
+                log.materialVariancePct != null
+                  ? `${log.materialVariancePct.toFixed(1)}%`
+                  : "—",
+              rate: (() => {
+                if (!log.closeAt || !log.goodQty) return "—";
+                const hours = (new Date(log.closeAt).getTime() - new Date(log.startAt).getTime()) / 3600000;
+                if (!hours || hours <= 0) return "—";
+                return (log.goodQty / hours).toFixed(2);
+              })(),
+              oee: log.oeePct ? `${log.oeePct.toFixed(1)}%` : "—",
+              crewTime: log.crewAssignments?.length ? (
+                <div className="text-xs text-text-muted">
+                  {log.crewAssignments.map((entry) => (
+                    <div key={entry.id}>
+                      {entry.employee.name} · {formatDuration(entry.startAt, entry.endAt)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                "—"
+              ),
+              notes: log.notes || log.closeNotes ? (
+                <div className="text-xs text-text-muted">
+                  {log.notes ? <div>Start: {log.notes}</div> : null}
+                  {log.closeNotes ? <div>Close: {log.closeNotes}</div> : null}
+                </div>
+              ) : (
+                "—"
+              ),
+              status: <Badge {...(statusBadge[log.status] ?? statusBadge.OPEN)} />,
+              actions:
+                log.status !== "CANCELLED" ? (
+                  <Button variant="ghost" onClick={() => cancelLog(log.id)}>
+                    Delete
+                  </Button>
+                ) : (
+                  ""
+                )
+            }))}
+            emptyLabel={loading ? "Loading logs..." : "No production logs yet."}
+          />
+        </CardBody>
+      </Card>
+    </div>
+  );
+}

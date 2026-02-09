@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 260 35% 97%;
+  --bg-subtle: 258 38% 94%;
+  --surface: 0 0% 100%;
+  --surface-2: 257 40% 98%;
+  --border: 255 22% 84%;
+  --text: 255 20% 18%;
+  --text-muted: 255 12% 42%;
+  --accent: 266 60% 60%;
+  --accent-2: 266 55% 72%;
+  --success: 158 40% 38%;
+  --warning: 32 60% 50%;
+  --danger: 350 55% 52%;
+  --ring: 266 60% 60%;
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border) / 0.7);
+  }
+
+  body {
+    @apply bg-bg text-text font-body;
+    background-image: radial-gradient(circle at 18% 0%, hsl(266 60% 88% / 0.5), transparent 45%),
+      linear-gradient(160deg, hsl(260 35% 97%) 0%, hsl(258 38% 94%) 60%, hsl(265 40% 98%) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    letter-spacing: 0.01em;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading text-text;
+  }
+
+  a {
+    @apply text-text;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.3);
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply min-h-screen;
+  }
+
+  .panel {
+    @apply bg-surface border border-border/80 rounded-2xl;
+    box-shadow: 0 14px 30px -26px rgba(72, 52, 116, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .panel-strong {
+    @apply bg-surface-2 border border-border/80 rounded-2xl;
+    box-shadow: 0 0 0 1px hsl(266 60% 85% / 0.5), 0 18px 38px -30px rgba(84, 58, 130, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .muted {
+    @apply text-text-muted;
+  }
+
+  .focus-ring {
+    outline: none;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--ring) / 0.25);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

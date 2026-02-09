@@ -1,0 +1,742 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id                      String     @id @default(cuid())
+  name                    String
+  gstin                   String?
+  phone                   String?
+  email                   String?
+  rawValuationMethod      String     @default("LAST_PRICE")
+  finishedValuationMethod String     @default("MANUFACTURING_COST")
+  wipValuationMethod      String     @default("RAW_CONSUMED_COST")
+  billingLine1            String?
+  billingLine2            String?
+  billingCity             String?
+  billingState            String?
+  billingPostalCode       String?
+  billingCountry          String?
+  shippingLine1           String?
+  shippingLine2           String?
+  shippingCity            String?
+  shippingState           String?
+  shippingPostalCode      String?
+  shippingCountry         String?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+  deletedAt               DateTime?
+  employees               Employee[]
+  roles                   Role[]
+  vendors                 Vendor[]
+  customers               Customer[]
+  skus                    Sku[]
+  machines                Machine[]
+  machineSkus             MachineSku[]
+  boms                    Bom[]
+  purchaseOrders          PurchaseOrder[]
+  salesOrders             SalesOrder[]
+  goodsReceipts           GoodsReceipt[]
+  stockLedgers            StockLedger[]
+  stockBalances           StockBalance[]
+  warehouses              Warehouse[]
+  zones                   Zone[]
+  salesOrderDeliveries    SalesOrderDelivery[]
+  salesInvoices           SalesInvoice[]
+  productionLogs          ProductionLog[]
+  productionLogAudits     ProductionLogAudit[]
+  productionLogConsumptions ProductionLogConsumption[]
+  stockReservations       StockReservation[]
+  productionLogCrew       ProductionLogCrew[]
+  activityLogs            ActivityLog[]
+  vendorSkus              VendorSku[]
+  routings                Routing[]
+}
+
+model Role {
+  id        String     @id @default(cuid())
+  companyId String
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  company   Company    @relation(fields: [companyId], references: [id])
+  employees EmployeeRole[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Employee {
+  id        String     @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  phone     String?
+  email     String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  company   Company    @relation(fields: [companyId], references: [id])
+  roles     EmployeeRole[]
+  operatorLogs ProductionLog[] @relation("ProductionOperator")
+  supervisorLogs ProductionLog[] @relation("ProductionSupervisor")
+  productionLogCrew ProductionLogCrew[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model EmployeeRole {
+  id         String   @id @default(cuid())
+  employeeId String
+  roleId     String
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([employeeId, roleId])
+}
+
+model Vendor {
+  id                String   @id @default(cuid())
+  companyId         String
+  code              String
+  name              String
+  vendorType        String   @default("RAW")
+  phone             String?
+  email             String?
+  gstin             String?
+  billingLine1      String?
+  billingLine2      String?
+  billingCity       String?
+  billingState      String?
+  billingPostalCode String?
+  billingCountry    String?
+  shippingLine1     String?
+  shippingLine2     String?
+  shippingCity      String?
+  shippingState     String?
+  shippingPostalCode String?
+  shippingCountry   String?
+  poSequence        Int      @default(0)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  company           Company  @relation(fields: [companyId], references: [id])
+  rawSkus           Sku[]    @relation("PreferredVendor")
+  vendorSkus        VendorSku[]
+  purchaseOrders    PurchaseOrder[]
+  goodsReceipts     GoodsReceipt[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([companyId, vendorType])
+}
+
+model VendorSku {
+  id        String   @id @default(cuid())
+  companyId String
+  vendorId  String
+  skuId     String
+  lastPrice Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id])
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+  sku       Sku      @relation(fields: [skuId], references: [id])
+
+  @@unique([vendorId, skuId])
+  @@index([companyId, vendorId])
+  @@index([companyId, skuId])
+}
+
+model Customer {
+  id                String   @id @default(cuid())
+  companyId         String
+  code              String
+  name              String
+  phone             String?
+  email             String?
+  gstin             String?
+  billingLine1      String?
+  billingLine2      String?
+  billingCity       String?
+  billingState      String?
+  billingPostalCode String?
+  billingCountry    String?
+  shippingLine1     String?
+  shippingLine2     String?
+  shippingCity      String?
+  shippingState     String?
+  shippingPostalCode String?
+  shippingCountry   String?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  company           Company  @relation(fields: [companyId], references: [id])
+  salesOrders       SalesOrder[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model Sku {
+  id        String   @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  unit      String
+  type      String
+  scrapPct  Float?
+  preferredVendorId String?
+  lastPurchasePrice Float?
+  standardCost      Float?
+  manufacturingCost Float?
+  sellingPrice      Float?
+  lowStockThreshold Float?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  company   Company  @relation(fields: [companyId], references: [id])
+  machineSkus MachineSku[]
+  preferredVendor Vendor? @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
+  boms      Bom[]    @relation("FinishedSku")
+  bomLines  BomLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  salesOrderLines    SalesOrderLine[]
+  goodsReceiptLines  GoodsReceiptLine[]
+  stockLedgers       StockLedger[]
+  stockBalances      StockBalance[]
+  salesInvoiceLines  SalesInvoiceLine[]
+  productionLogs     ProductionLog[] @relation("ProductionFinishedSku")
+  productionLogConsumptions ProductionLogConsumption[]
+  stockReservations  StockReservation[]
+  vendorSkus         VendorSku[]
+  routing            Routing?
+
+  @@unique([companyId, code])
+  @@index([companyId, type])
+  @@index([companyId, preferredVendorId])
+}
+
+model StockLedger {
+  id            String   @id @default(cuid())
+  companyId     String
+  skuId         String
+  zoneId        String
+  direction     String
+  movementType  String
+  quantity      Float
+  costPerUnit   Float
+  totalCost     Float
+  referenceType String?
+  referenceId   String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  company       Company  @relation(fields: [companyId], references: [id])
+  sku           Sku      @relation(fields: [skuId], references: [id])
+  zone          Zone     @relation(fields: [zoneId], references: [id])
+
+  @@index([companyId, skuId, zoneId])
+  @@index([companyId, createdAt])
+}
+
+model StockBalance {
+  id             String   @id @default(cuid())
+  companyId      String
+  skuId          String
+  zoneId         String
+  quantityOnHand Float    @default(0)
+  costPerUnit    Float    @default(0)
+  totalCost      Float    @default(0)
+  updatedAt      DateTime @updatedAt
+  company        Company  @relation(fields: [companyId], references: [id])
+  sku            Sku      @relation(fields: [skuId], references: [id])
+  zone           Zone     @relation(fields: [zoneId], references: [id])
+
+  @@unique([companyId, skuId, zoneId])
+  @@index([companyId, skuId])
+  @@index([companyId, zoneId])
+}
+
+model Machine {
+  id                    String   @id @default(cuid())
+  companyId             String
+  code                  String
+  name                  String
+  model                 String?
+  category              String?
+  baseCapacityPerMinute Float
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  deletedAt             DateTime?
+  company               Company  @relation(fields: [companyId], references: [id])
+  machineSkus           MachineSku[]
+  productionLogs        ProductionLog[]
+  routingSteps          RoutingStep[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model MachineSku {
+  id                String   @id @default(cuid())
+  companyId         String
+  machineId         String
+  skuId             String
+  capacityPerMinute Float
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  company           Company  @relation(fields: [companyId], references: [id])
+  machine           Machine  @relation(fields: [machineId], references: [id])
+  sku               Sku      @relation(fields: [skuId], references: [id])
+
+  @@unique([companyId, machineId, skuId])
+  @@index([companyId])
+}
+
+model Routing {
+  id            String   @id @default(cuid())
+  companyId     String
+  finishedSkuId String   @unique
+  name          String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+  company       Company  @relation(fields: [companyId], references: [id])
+  finishedSku   Sku      @relation(fields: [finishedSkuId], references: [id])
+  steps         RoutingStep[]
+
+  @@index([companyId])
+}
+
+model RoutingStep {
+  id                String   @id @default(cuid())
+  routingId         String
+  machineId         String
+  sequence          Int
+  capacityPerMinute Float
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  routing           Routing  @relation(fields: [routingId], references: [id])
+  machine           Machine  @relation(fields: [machineId], references: [id])
+
+  @@unique([routingId, sequence])
+  @@index([routingId])
+  @@index([machineId])
+}
+
+model Bom {
+  id            String   @id @default(cuid())
+  companyId     String
+  finishedSkuId String
+  version       Int      @default(1)
+  name          String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+  company       Company  @relation(fields: [companyId], references: [id])
+  finishedSku   Sku      @relation("FinishedSku", fields: [finishedSkuId], references: [id])
+  lines         BomLine[]
+
+  @@unique([companyId, finishedSkuId, version])
+  @@index([companyId])
+}
+
+model BomLine {
+  id        String   @id @default(cuid())
+  bomId     String
+  rawSkuId  String
+  quantity  Float
+  scrapPct  Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  bom       Bom      @relation(fields: [bomId], references: [id])
+  rawSku    Sku      @relation(fields: [rawSkuId], references: [id])
+
+  @@unique([bomId, rawSkuId])
+  @@index([bomId])
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  company   Company  @relation(fields: [companyId], references: [id])
+  zones     Zone[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model Zone {
+  id          String   @id @default(cuid())
+  companyId   String
+  warehouseId String
+  code        String
+  name        String
+  type        String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  company     Company  @relation(fields: [companyId], references: [id])
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  stockLedgers StockLedger[]
+  stockBalances StockBalance[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  companyId  String
+  vendorId   String
+  poNumber   String?
+  type       String   @default("RAW")
+  status     String   @default("DRAFT")
+  orderDate  DateTime @default(now())
+  currency   String   @default("INR")
+  notes      String?
+  closedAt   DateTime?
+  closeReason String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+  company    Company  @relation(fields: [companyId], references: [id])
+  vendor     Vendor   @relation(fields: [vendorId], references: [id])
+  lines      PurchaseOrderLine[]
+  receipts   GoodsReceipt[]
+
+  @@index([companyId, vendorId])
+  @@index([companyId, status])
+  @@index([companyId, type])
+}
+
+model PurchaseOrderLine {
+  id              String   @id @default(cuid())
+  purchaseOrderId String
+  skuId           String
+  description     String?
+  quantity        Float
+  unitPrice       Float
+  discountPct     Float?   @default(0)
+  taxPct          Float?   @default(0)
+  expectedDate    DateTime?
+  qcStatus        String   @default("PENDING")
+  qcNotes         String?
+  qcPassedQty     Float?   @default(0)
+  receivedQty     Float    @default(0)
+  shortClosedQty  Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  sku             Sku      @relation(fields: [skuId], references: [id])
+  allocations     PurchaseOrderAllocation[]
+  receiptLines    GoodsReceiptLine[]
+
+  @@index([purchaseOrderId])
+  @@index([skuId])
+}
+
+model GoodsReceipt {
+  id              String   @id @default(cuid())
+  companyId       String
+  vendorId        String
+  purchaseOrderId String
+  receivedAt      DateTime @default(now())
+  notes           String?
+  createdAt       DateTime @default(now())
+  company         Company  @relation(fields: [companyId], references: [id])
+  vendor          Vendor   @relation(fields: [vendorId], references: [id])
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  lines           GoodsReceiptLine[]
+
+  @@index([companyId, vendorId])
+}
+
+model GoodsReceiptLine {
+  id          String   @id @default(cuid())
+  receiptId   String
+  poLineId    String
+  skuId       String
+  quantity    Float
+  costPerUnit Float
+  totalCost   Float
+  createdAt   DateTime @default(now())
+  receipt     GoodsReceipt @relation(fields: [receiptId], references: [id])
+  poLine      PurchaseOrderLine @relation(fields: [poLineId], references: [id])
+  sku         Sku      @relation(fields: [skuId], references: [id])
+
+  @@index([receiptId])
+  @@index([poLineId])
+}
+
+model SalesOrder {
+  id         String   @id @default(cuid())
+  companyId  String
+  customerId String
+  soNumber   String?
+  status     String   @default("QUOTE")
+  orderDate  DateTime @default(now())
+  currency   String   @default("INR")
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+  company    Company  @relation(fields: [companyId], references: [id])
+  customer   Customer @relation(fields: [customerId], references: [id])
+  lines      SalesOrderLine[]
+  deliveries SalesOrderDelivery[]
+  invoices   SalesInvoice[]
+
+  @@index([companyId, customerId])
+  @@index([companyId, status])
+}
+
+model SalesOrderLine {
+  id           String   @id @default(cuid())
+  salesOrderId String
+  skuId        String
+  quantity     Float
+  unitPrice    Float
+  discountPct  Float?  @default(0)
+  taxPct       Float?  @default(0)
+  deliveredQty Float   @default(0)
+  producedQty  Float   @default(0)
+  scrapQty     Float   @default(0)
+  allocatedQty Float    @default(0)
+  expectedRawCost Float @default(0)
+  actualRawCost   Float @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  sku          Sku       @relation(fields: [skuId], references: [id])
+  allocations  PurchaseOrderAllocation[]
+  reservations StockReservation[]
+  deliveries   SalesOrderDelivery[]
+  invoiceLines SalesInvoiceLine[]
+  productionLogs ProductionLog[]
+
+  @@index([salesOrderId])
+  @@index([skuId])
+}
+
+model SalesOrderDelivery {
+  id           String   @id @default(cuid())
+  companyId    String
+  salesOrderId String
+  soLineId     String
+  quantity     Float
+  deliveryDate DateTime @default(now())
+  packagingCost Float  @default(0)
+  notes        String?
+  createdAt    DateTime @default(now())
+  company      Company        @relation(fields: [companyId], references: [id])
+  salesOrder   SalesOrder     @relation(fields: [salesOrderId], references: [id])
+  line         SalesOrderLine @relation(fields: [soLineId], references: [id])
+  invoice      SalesInvoice?
+
+  @@index([companyId, salesOrderId])
+  @@index([soLineId])
+}
+
+model SalesInvoice {
+  id           String   @id @default(cuid())
+  companyId    String
+  salesOrderId String
+  deliveryId   String?  @unique
+  invoiceNumber String?
+  status       String   @default("ISSUED")
+  invoiceDate  DateTime @default(now())
+  currency     String   @default("INR")
+  notes        String?
+  createdAt    DateTime @default(now())
+  company      Company      @relation(fields: [companyId], references: [id])
+  salesOrder   SalesOrder   @relation(fields: [salesOrderId], references: [id])
+  delivery     SalesOrderDelivery? @relation(fields: [deliveryId], references: [id])
+  lines        SalesInvoiceLine[]
+
+  @@index([companyId, salesOrderId])
+}
+
+model SalesInvoiceLine {
+  id         String   @id @default(cuid())
+  invoiceId  String
+  soLineId   String
+  skuId      String
+  quantity   Float
+  unitPrice  Float
+  discountPct Float? @default(0)
+  taxPct     Float? @default(0)
+  createdAt  DateTime @default(now())
+  invoice    SalesInvoice   @relation(fields: [invoiceId], references: [id])
+  soLine     SalesOrderLine @relation(fields: [soLineId], references: [id])
+  sku        Sku            @relation(fields: [skuId], references: [id])
+
+  @@index([invoiceId])
+  @@index([soLineId])
+  @@index([skuId])
+}
+
+model ProductionLog {
+  id               String   @id @default(cuid())
+  companyId        String
+  purpose          String
+  status           String   @default("OPEN")
+  salesOrderLineId String?
+  finishedSkuId    String
+  machineId        String
+  operatorId       String?
+  supervisorId     String?
+  crewSize         Int?
+  plannedQty       Float
+  startAt          DateTime @default(now())
+  closeAt          DateTime?
+  goodQty          Float    @default(0)
+  rejectQty        Float    @default(0)
+  scrapQty         Float    @default(0)
+  expectedRawQty   Float?
+  actualRawQty     Float?
+  expectedRawCost  Float?
+  actualRawCost    Float?
+  materialVariancePct  Float?
+  materialVarianceCost Float?
+  oeePct           Float?
+  notes            String?
+  closeNotes       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+  company          Company  @relation(fields: [companyId], references: [id])
+  salesOrderLine   SalesOrderLine? @relation(fields: [salesOrderLineId], references: [id])
+  finishedSku      Sku      @relation("ProductionFinishedSku", fields: [finishedSkuId], references: [id])
+  machine          Machine  @relation(fields: [machineId], references: [id])
+  operator         Employee? @relation("ProductionOperator", fields: [operatorId], references: [id])
+  supervisor       Employee? @relation("ProductionSupervisor", fields: [supervisorId], references: [id])
+  crewAssignments  ProductionLogCrew[]
+  audits           ProductionLogAudit[]
+  consumptions     ProductionLogConsumption[]
+
+  @@index([companyId, status])
+  @@index([companyId, startAt])
+  @@index([salesOrderLineId])
+  @@index([finishedSkuId])
+  @@index([machineId])
+}
+
+model ProductionLogConsumption {
+  id        String   @id @default(cuid())
+  companyId String
+  logId     String
+  rawSkuId  String
+  quantity  Float
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id])
+  log       ProductionLog @relation(fields: [logId], references: [id])
+  rawSku    Sku      @relation(fields: [rawSkuId], references: [id])
+
+  @@index([companyId, logId])
+  @@index([rawSkuId])
+}
+
+model StockReservation {
+  id         String   @id @default(cuid())
+  companyId  String
+  soLineId   String
+  skuId      String
+  quantity   Float
+  releasedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company    Company         @relation(fields: [companyId], references: [id])
+  soLine     SalesOrderLine  @relation(fields: [soLineId], references: [id])
+  sku        Sku             @relation(fields: [skuId], references: [id])
+
+  @@unique([soLineId, skuId])
+  @@index([companyId, skuId])
+  @@index([soLineId])
+}
+
+model ProductionLogAudit {
+  id         String   @id @default(cuid())
+  companyId  String
+  logId      String
+  action     String
+  reason     String?
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id])
+  log        ProductionLog @relation(fields: [logId], references: [id])
+
+  @@index([companyId, logId])
+}
+
+model ProductionLogCrew {
+  id         String   @id @default(cuid())
+  companyId  String
+  logId      String
+  employeeId String
+  role       String
+  startAt    DateTime @default(now())
+  endAt      DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company    Company       @relation(fields: [companyId], references: [id])
+  log        ProductionLog @relation(fields: [logId], references: [id])
+  employee   Employee      @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId, logId])
+  @@index([employeeId])
+}
+
+model PurchaseOrderAllocation {
+  id        String   @id @default(cuid())
+  poLineId  String
+  soLineId  String
+  quantity  Float
+  createdAt DateTime @default(now())
+  poLine    PurchaseOrderLine @relation(fields: [poLineId], references: [id])
+  soLine    SalesOrderLine    @relation(fields: [soLineId], references: [id])
+
+  @@index([poLineId])
+  @@index([soLineId])
+}
+
+model ActivityLog {
+  id              String   @id @default(cuid())
+  companyId       String
+  actorName       String
+  actorEmployeeId String?
+  action          String
+  entityType      String
+  entityId        String?
+  summary         String
+  createdAt       DateTime @default(now())
+  company         Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([companyId, entityType])
+}
