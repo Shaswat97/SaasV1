@@ -9,7 +9,7 @@ async function main() {
     return;
   }
 
-  const companyName = process.env.SEED_COMPANY_NAME || "New Manufacturing Tenant";
+  const companyName = process.env.SEED_COMPANY_NAME || "Default";
   const company = await prisma.company.create({
     data: {
       name: companyName
