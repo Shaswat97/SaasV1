@@ -3,6 +3,8 @@ import { jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { computeEmployeePerformance } from "@/lib/employee-performance";
 
+export const dynamic = "force-dynamic";
+
 const LOW_STOCK_THRESHOLD = 5;
 const DELAY_DAYS = 7;
 const DOWNTIME_HOURS = 48;
