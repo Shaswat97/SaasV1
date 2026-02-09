@@ -10,7 +10,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
   const companyId = await getDefaultCompanyId();
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const skus = await prisma.sku.findMany({
     where: {
@@ -41,6 +40,7 @@ export async function POST(request: Request) {
   }
 
   const companyId = await getDefaultCompanyId();
+  const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   try {
     const sku = await prisma.sku.create({

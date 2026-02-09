@@ -6,7 +6,6 @@ import { getActorFromRequest, recordActivity } from "@/lib/activity";
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const companyId = await getDefaultCompanyId();
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
   const employee = await prisma.employee.findFirst({
     where: { id: params.id, companyId, deletedAt: null },
     include: { roles: { include: { role: true } } }
@@ -34,6 +33,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 
   const companyId = await getDefaultCompanyId();
+  const { actorName, actorEmployeeId } = getActorFromRequest(request);
 
   const existing = await prisma.employee.findFirst({
     where: { id: params.id, companyId, deletedAt: null }

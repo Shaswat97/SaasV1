@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, StockLedger } from "@prisma/client";
 
 export type MovementDirection = "IN" | "OUT";
 export type MovementType = "RECEIPT" | "ISSUE" | "TRANSFER" | "ADJUSTMENT" | "PRODUCE";
@@ -42,7 +42,10 @@ async function resolveCostPerUnit({
   return null;
 }
 
-export async function recordStockMovement(input: StockMovementInput, tx?: Prisma.TransactionClient) {
+export async function recordStockMovement(
+  input: StockMovementInput,
+  tx?: Prisma.TransactionClient
+): Promise<StockLedger> {
   if (input.quantity <= 0) {
     throw new Error("Quantity must be greater than 0");
   }
