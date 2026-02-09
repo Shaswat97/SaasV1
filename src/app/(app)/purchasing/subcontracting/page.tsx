@@ -1170,63 +1170,67 @@ export default function SubcontractingPage() {
       </div>
 
       {receivePo ? (
-        <Card ref={receiveRef}>
-          <CardHeader>
-            <CardTitle>Receive Finished Goods</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="space-y-4">
-              <p className="text-sm text-text-muted">
-                Receiving against {receivePo.poNumber ?? receivePo.id}. Finished stock will be updated.
-              </p>
-              <Select
-                label="Receive To"
-                value={receiveZoneId}
-                onChange={(event) => setReceiveZoneId(event.target.value)}
-                options={finishedZoneOptions}
-                required
-              />
-              <div className="space-y-3">
-                {receiveLines.length === 0 ? (
-                  <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-4 text-sm text-text-muted">
-                    No open lines to receive.
-                  </div>
-                ) : (
-                  receiveLines.map((line) => (
-                    <div key={line.poLineId} className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
-                      <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr]">
-                        <Input label="SKU" value={`${line.sku.code} · ${line.sku.name}`} readOnly />
-                        <Input label="Open Qty" value={`${line.openQty} ${line.sku.unit}`} readOnly />
-                        <Input
-                          label="Receive Qty"
-                          value={line.qty}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setReceiveLines((prev) =>
-                              prev.map((item) => (item.poLineId === line.poLineId ? { ...item, qty: value } : item))
-                            );
-                          }}
-                          type="number"
-                        />
-                      </div>
+        <div ref={receiveRef}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Receive Finished Goods</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-4">
+                <p className="text-sm text-text-muted">
+                  Receiving against {receivePo.poNumber ?? receivePo.id}. Finished stock will be updated.
+                </p>
+                <Select
+                  label="Receive To"
+                  value={receiveZoneId}
+                  onChange={(event) => setReceiveZoneId(event.target.value)}
+                  options={finishedZoneOptions}
+                  required
+                />
+                <div className="space-y-3">
+                  {receiveLines.length === 0 ? (
+                    <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-4 text-sm text-text-muted">
+                      No open lines to receive.
                     </div>
-                  ))
-                )}
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="secondary" onClick={() => setReceivePo(null)}>
-                  Cancel
-                </Button>
-                <Button onClick={receiveOrder}>Post Receipt</Button>
-                {lastReceiptId ? (
-                  <Button variant="secondary" onClick={() => downloadReceipt(lastReceiptId)}>
-                    Download Receipt
+                  ) : (
+                    receiveLines.map((line) => (
+                      <div key={line.poLineId} className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                        <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr]">
+                          <Input label="SKU" value={`${line.sku.code} · ${line.sku.name}`} readOnly />
+                          <Input label="Open Qty" value={`${line.openQty} ${line.sku.unit}`} readOnly />
+                          <Input
+                            label="Receive Qty"
+                            value={line.qty}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setReceiveLines((prev) =>
+                                prev.map((item) =>
+                                  item.poLineId === line.poLineId ? { ...item, qty: value } : item
+                                )
+                              );
+                            }}
+                            type="number"
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="secondary" onClick={() => setReceivePo(null)}>
+                    Cancel
                   </Button>
-                ) : null}
+                  <Button onClick={receiveOrder}>Post Receipt</Button>
+                  {lastReceiptId ? (
+                    <Button variant="secondary" onClick={() => downloadReceipt(lastReceiptId)}>
+                      Download Receipt
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </CardBody>
-        </Card>
+            </CardBody>
+          </Card>
+        </div>
       ) : null}
 
       <ToastViewport toasts={toasts} onRemove={remove} />
