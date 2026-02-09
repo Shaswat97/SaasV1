@@ -30,6 +30,10 @@ function assertIdentifier(value, label) {
   }
 }
 
+function escapeSqlString(value) {
+  return value.replace(/'/g, "''");
+}
+
 async function main() {
   const args = parseArgs();
   const subdomain = args.subdomain || args.sub;
@@ -54,8 +58,9 @@ async function main() {
 
   const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
+  const safePassword = escapeSqlString(dbPassword);
   try {
-    await admin.query(`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD $1`, [dbPassword]);
+    await admin.query(`CREATE ROLE "${dbUser}" WITH LOGIN PASSWORD '${safePassword}'`);
   } catch (error) {
     if (error && error.code !== "42710") throw error;
   }
