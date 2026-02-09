@@ -56,6 +56,8 @@ async function main() {
   if (!adminUrl) throw new Error("POSTGRES_ADMIN_URL is required to create tenant databases.");
   if (!registryUrl) throw new Error("TENANT_REGISTRY_URL is required to register tenants.");
 
+  const adminUrlObj = new URL(adminUrl);
+  const adminUser = adminUrlObj.username || null;
   const admin = new Client({ connectionString: adminUrl });
   await admin.connect();
   const safePassword = escapeSqlString(dbPassword);
@@ -65,10 +67,12 @@ async function main() {
     if (error && error.code !== "42710") throw error;
   }
 
-  try {
-    await admin.query(`GRANT "${dbUser}" TO CURRENT_USER`);
-  } catch (error) {
-    if (error && error.code !== "42710") throw error;
+  if (adminUser && adminUser !== dbUser) {
+    try {
+      await admin.query(`GRANT "${dbUser}" TO CURRENT_USER`);
+    } catch (error) {
+      if (error && error.code !== "42710" && error.code !== "42501") throw error;
+    }
   }
 
   try {
@@ -80,7 +84,6 @@ async function main() {
   await admin.query(`GRANT ALL PRIVILEGES ON DATABASE "${dbName}" TO "${dbUser}"`);
   await admin.end();
 
-  const adminUrlObj = new URL(adminUrl);
   const host = adminUrlObj.hostname || "localhost";
   const port = adminUrlObj.port || "5432";
   const tenantDbUrl = `postgresql://${dbUser}:${encodeURIComponent(dbPassword)}@${host}:${port}/${dbName}?schema=public`;
