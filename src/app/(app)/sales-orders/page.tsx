@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/Card";
-import { DataTable } from "@/components/DataTable";
+import { DataTable, type DataColumn } from "@/components/DataTable";
 import { Input } from "@/components/Input";
 import { Modal } from "@/components/Modal";
 import { Tabs } from "@/components/Tabs";
@@ -651,7 +651,7 @@ export default function SalesOrdersPage() {
   }, [orders]);
 
   const statusTabs = useMemo(() => {
-    const columns = [
+    const columns: DataColumn[] = [
       { key: "so", label: "Order" },
       { key: "customer", label: "Customer" },
       { key: "value", label: "Value", align: "right" },
