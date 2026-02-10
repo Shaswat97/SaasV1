@@ -152,6 +152,8 @@ type DraftLineForm = {
 type LastPriceInfo = {
   source: "invoice" | "order";
   unitPrice: number;
+  discountPct?: number | null;
+  taxPct?: number | null;
   currency?: string | null;
   date?: string | null;
   soNumber?: string | null;
@@ -287,6 +289,26 @@ export default function SalesOrdersPage() {
     });
   }, [customerId, lines, lastPriceMap]);
 
+  useEffect(() => {
+    if (!customerId) return;
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        if (!line.skuId) return line;
+        if (line.taxPct && line.taxPct !== "") return line;
+        const key = `${customerId}:${line.skuId}`;
+        if (!Object.prototype.hasOwnProperty.call(lastPriceMap, key)) return line;
+        const info = lastPriceMap[key];
+        const nextTax = info?.taxPct ?? 0;
+        const nextValue = String(nextTax);
+        if (line.taxPct === nextValue) return line;
+        changed = true;
+        return { ...line, taxPct: nextValue };
+      });
+      return changed ? next : prev;
+    });
+  }, [customerId, lastPriceMap]);
+
   function resetForm() {
     setNotes("");
     setOrderDate("");
@@ -305,7 +327,7 @@ export default function SalesOrdersPage() {
         quantity: "",
         unitPrice: "",
         discountPct: "0",
-        taxPct: "0"
+        taxPct: ""
       }
     ]);
   }

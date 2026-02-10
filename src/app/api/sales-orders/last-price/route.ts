@@ -32,6 +32,8 @@ export async function GET(request: Request) {
     return jsonOk({
       source: "invoice",
       unitPrice: invoiceLine.unitPrice,
+      discountPct: invoiceLine.discountPct ?? 0,
+      taxPct: invoiceLine.taxPct ?? 0,
       currency: invoiceLine.invoice?.currency ?? "INR",
       date: invoiceLine.invoice?.invoiceDate?.toISOString() ?? null,
       soNumber: invoiceLine.invoice?.salesOrder?.soNumber ?? null
@@ -54,6 +56,8 @@ export async function GET(request: Request) {
   return jsonOk({
     source: "order",
     unitPrice: orderLine.unitPrice,
+    discountPct: orderLine.discountPct ?? 0,
+    taxPct: orderLine.taxPct ?? 0,
     currency: "INR",
     date: orderLine.salesOrder?.orderDate?.toISOString() ?? null,
     soNumber: orderLine.salesOrder?.soNumber ?? null
