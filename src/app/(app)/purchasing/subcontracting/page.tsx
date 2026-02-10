@@ -164,7 +164,13 @@ function collectLinkedOrders(order: PurchaseOrder) {
 }
 
 export default function SubcontractingPage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  })();
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [finishedSkus, setFinishedSkus] = useState<FinishedSku[]>([]);
   const [vendorSkus, setVendorSkus] = useState<VendorSku[]>([]);

@@ -332,6 +332,8 @@ export default function SalesOrdersPage() {
     setDetailLoading(true);
     if (detailScrollRef.current) {
       scrollRestoreRef.current = detailScrollRef.current.scrollTop;
+    } else if (!detail) {
+      scrollRestoreRef.current = 0;
     }
     try {
       const data = await apiGet<SalesOrderDetail>(`/api/sales-orders/${orderId}`);
@@ -882,6 +884,7 @@ export default function SalesOrdersPage() {
         title={detail ? `Sales Order ${detail.soNumber ?? detail.id}` : "Sales Order"}
         className="max-w-5xl"
         scrollRef={detailScrollRef}
+        autoScrollTop={false}
       >
         {detailLoading || !detail ? (
           <p>Loading...</p>

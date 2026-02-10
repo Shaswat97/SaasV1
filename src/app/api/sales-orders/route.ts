@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
@@ -23,6 +24,34 @@ const soSchema = z.object({
   notes: z.string().optional(),
   lines: z.array(soLineSchema).min(1, "Add at least one line")
 });
+
+function formatSoDate(date: Date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = String(date.getFullYear() % 100).padStart(2, "0");
+  return `${day}/${month}/${year}`;
+}
+
+async function generateSoNumber(tx: Prisma.TransactionClient, companyId: string, date: Date) {
+  const prefix = formatSoDate(date);
+  const existing = await tx.salesOrder.findMany({
+    where: {
+      companyId,
+      soNumber: { startsWith: `${prefix}-` }
+    },
+    select: { soNumber: true }
+  });
+  const max = existing.reduce((acc, row) => {
+    if (!row.soNumber) return acc;
+    const parts = row.soNumber.split("-");
+    const raw = parts[parts.length - 1];
+    const value = Number.parseInt(raw, 10);
+    if (Number.isNaN(value)) return acc;
+    return Math.max(acc, value);
+  }, 0);
+  const next = String(max + 1).padStart(2, "0");
+  return `${prefix}-${next}`;
+}
 
 export async function GET() {
   const prisma = await getTenantPrisma();
@@ -77,13 +106,18 @@ export async function POST(request: Request) {
   }
 
   const order = await prisma.$transaction(async (tx) => {
+    const resolvedOrderDate = parsed.data.orderDate ? new Date(parsed.data.orderDate) : new Date();
+    const resolvedSoNumber =
+      parsed.data.soNumber && parsed.data.soNumber.trim().length > 0
+        ? parsed.data.soNumber.trim()
+        : await generateSoNumber(tx, companyId, resolvedOrderDate);
     const created = await tx.salesOrder.create({
       data: {
         companyId,
         customerId: parsed.data.customerId,
-        soNumber: parsed.data.soNumber,
+        soNumber: resolvedSoNumber,
         status: "QUOTE",
-        orderDate: parsed.data.orderDate ? new Date(parsed.data.orderDate) : undefined,
+        orderDate: resolvedOrderDate,
         currency: parsed.data.currency ?? "INR",
         notes: parsed.data.notes,
         lines: {

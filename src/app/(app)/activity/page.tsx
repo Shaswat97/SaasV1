@@ -70,8 +70,14 @@ type ActivityLog = {
 export default function ActivityPage() {
   const today = new Date();
   const fromDefault = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(fromDefault.toISOString().slice(0, 10));
-  const [to, setTo] = useState(today.toISOString().slice(0, 10));
+  const toLocalDate = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const [from, setFrom] = useState(toLocalDate(fromDefault));
+  const [to, setTo] = useState(toLocalDate(today));
   const [entity, setEntity] = useState("ALL");
   const [action, setAction] = useState("ALL");
   const [actor, setActor] = useState("ALL");

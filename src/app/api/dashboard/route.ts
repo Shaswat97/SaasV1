@@ -9,21 +9,47 @@ const LOW_STOCK_THRESHOLD = 5;
 const DELAY_DAYS = 7;
 const DOWNTIME_HOURS = 48;
 
-export async function GET() {
+function parseDateRange(searchParams: URLSearchParams) {
+  const today = new Date();
+  const defaultTo = new Date(today);
+  defaultTo.setHours(23, 59, 59, 999);
+  const defaultFrom = new Date(today);
+  defaultFrom.setDate(defaultFrom.getDate() - 29);
+  defaultFrom.setHours(0, 0, 0, 0);
+
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+
+  const parsedFrom = fromParam ? new Date(`${fromParam}T00:00:00`) : defaultFrom;
+  const parsedTo = toParam ? new Date(`${toParam}T23:59:59.999`) : defaultTo;
+
+  const from = Number.isNaN(parsedFrom.getTime()) ? defaultFrom : parsedFrom;
+  const to = Number.isNaN(parsedTo.getTime()) ? defaultTo : parsedTo;
+
+  if (from > to) {
+    return { from: to, to: from };
+  }
+  return { from, to };
+}
+
+export async function GET(request: Request) {
   const prisma = await getTenantPrisma();
   if (!prisma) return jsonError("Tenant not found", 404);
   const companyId = await getDefaultCompanyId(prisma);
+  const url = new URL(request.url);
+  const { from, to } = parseDateRange(url.searchParams);
   const now = new Date();
   const delayCutoff = new Date(now.getTime() - DELAY_DAYS * 24 * 60 * 60 * 1000);
   const downtimeCutoff = new Date(now.getTime() - DOWNTIME_HOURS * 60 * 60 * 1000);
 
-  const [salesLines, stockBalances, productionLogs, machines, employeePerf, skus] = await Promise.all([
+  const [salesLines, stockBalances, productionLogs, machines, employeePerf, skus, invoiceLines] = await Promise.all([
     prisma.salesOrderLine.findMany({
       where: {
         salesOrder: {
           companyId,
           deletedAt: null,
-          status: { in: ["QUOTE", "CONFIRMED", "PRODUCTION", "DISPATCH"] }
+          status: { in: ["QUOTE", "CONFIRMED", "PRODUCTION", "DISPATCH"] },
+          orderDate: { gte: from, lte: to }
         }
       },
       include: {
@@ -44,15 +70,19 @@ export async function GET() {
       where: { companyId, deletedAt: null }
     }),
     (() => {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-      end.setHours(23, 59, 59, 999);
-      return computeEmployeePerformance({ companyId, from: start, to: end, tx: prisma });
+      return computeEmployeePerformance({ companyId, from, to, tx: prisma });
     })(),
     prisma.sku.findMany({
       where: { companyId, deletedAt: null, type: { in: ["RAW", "FINISHED"] } },
       select: { id: true, code: true, name: true, unit: true, type: true, lowStockThreshold: true }
+    }),
+    prisma.salesInvoiceLine.findMany({
+      where: {
+        invoice: {
+          companyId,
+          invoiceDate: { gte: from, lte: to }
+        }
+      }
     })
   ]);
 
@@ -79,6 +109,13 @@ export async function GET() {
   const avgOee = recentOee.length
     ? recentOee.reduce((sum, log) => sum + (log.oeePct ?? 0), 0) / recentOee.length
     : 0;
+
+  const totalRevenue = invoiceLines.reduce((sum, line) => {
+    const discount = line.discountPct ?? 0;
+    const tax = line.taxPct ?? 0;
+    const discounted = line.unitPrice * (1 - discount / 100);
+    return sum + line.quantity * discounted * (1 + tax / 100);
+  }, 0);
 
   const onHandMap = new Map<string, number>();
   stockBalances.forEach((balance) => {
@@ -154,6 +191,7 @@ export async function GET() {
   return jsonOk({
     cards: {
       orderBacklogValue,
+      totalRevenue,
       deliveryCompletionPct,
       inventoryValue,
       avgOee
@@ -164,7 +202,7 @@ export async function GET() {
       machineDowntime
     },
     employeePerformance: {
-      date: new Date().toISOString().slice(0, 10),
+      date: from.toISOString().slice(0, 10),
       topEmployees: employeePerf.summary.slice(0, 5)
     }
   });

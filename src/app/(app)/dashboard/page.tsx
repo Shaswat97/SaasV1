@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/Badge";
 import { Card, CardBody, CardDescription, CardHeader, CardTitle } from "@/components/Card";
 import { DataTable } from "@/components/DataTable";
+import { Input } from "@/components/Input";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatsCard } from "@/components/StatsCard";
 import { Tabs } from "@/components/Tabs";
@@ -21,6 +22,7 @@ const number = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 type DashboardData = {
   cards: {
     orderBacklogValue: number;
+    totalRevenue: number;
     deliveryCompletionPct: number;
     inventoryValue: number;
     avgOee: number;
@@ -71,14 +73,21 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [backlog, setBacklog] = useState<BacklogLine[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fromDate, setFromDate] = useState(() => {
+    const base = new Date();
+    base.setDate(base.getDate() - 29);
+    return base.toISOString().slice(0, 10);
+  });
+  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
+        const query = `?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`;
         const [dashboard, backlogData] = await Promise.all([
-          apiGet<DashboardData>("/api/dashboard"),
-          apiGet<BacklogLine[]>("/api/production-logs/backlog")
+          apiGet<DashboardData>(`/api/dashboard${query}`),
+          apiGet<BacklogLine[]>(`/api/production-logs/backlog${query}`)
         ]);
         setData(dashboard);
         setBacklog(backlogData);
@@ -88,7 +97,7 @@ export default function DashboardPage() {
     };
 
     load();
-  }, []);
+  }, [fromDate, toDate]);
 
   const cards = useMemo(() => {
     if (!data) return [];
@@ -99,6 +108,13 @@ export default function DashboardPage() {
         delta: `${number.format(data.cards.deliveryCompletionPct)}% delivered`,
         trend: "flat" as const,
         href: "/sales-orders"
+      },
+      {
+        label: "Total Revenue",
+        value: currency.format(data.cards.totalRevenue),
+        delta: `${fromDate} → ${toDate}`,
+        trend: "up" as const,
+        href: "/reports"
       },
       {
         label: "Inventory Value",
@@ -122,7 +138,7 @@ export default function DashboardPage() {
         href: "/sales-orders"
       }
     ];
-  }, [data]);
+  }, [data, fromDate, toDate]);
 
   const alertTabs = useMemo(() => {
     if (!data) return [];
@@ -196,9 +212,25 @@ export default function DashboardPage() {
       <SectionHeader
         title="Command Center"
         subtitle="Live snapshot of demand, inventory exposure, and production health."
+        actions={
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="From"
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+            />
+            <Input
+              label="To"
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+            />
+          </div>
+        }
       />
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
           <Link key={card.label} href={card.href} className="block transition hover:-translate-y-0.5">
             <StatsCard label={card.label} value={card.value} delta={card.delta} trend={card.trend} />
@@ -242,7 +274,7 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Employee Performance (Today)</CardTitle>
+          <CardTitle>Employee Performance (Selected Range)</CardTitle>
           <CardDescription>Rating out of 10 based on expected vs actual output.</CardDescription>
         </CardHeader>
         <CardBody>
