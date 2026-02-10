@@ -550,10 +550,22 @@ export default function SalesOrdersPage() {
   }, [detail]);
 
   async function updateStatus(order: SalesOrder, action: "confirm" | "production" | "dispatch") {
+    if (action === "dispatch") {
+      const totalProduced = order.lines.reduce((sum, line) => sum + (line.producedQty ?? 0), 0);
+      if (totalProduced <= 0) {
+        push("error", "Cannot dispatch without any produced quantity. Close a production log first.");
+        return;
+      }
+    }
     try {
       await apiSend(`/api/sales-orders/${order.id}/${action}`, "POST");
       push("success", "Order status updated");
       loadData();
+      if (action === "dispatch") {
+        setFocusSection("deliveries");
+        openDetail(order.id);
+        return;
+      }
       if (detail?.id === order.id) {
         openDetail(order.id);
       }
@@ -746,7 +758,11 @@ export default function SalesOrdersPage() {
               </Button>
             ) : null}
             {order.status === "PRODUCTION" ? (
-              <Button variant="ghost" onClick={() => updateStatus(order, "dispatch")}>
+              <Button
+                variant="ghost"
+                onClick={() => updateStatus(order, "dispatch")}
+                disabled={order.lines.every((line) => (line.producedQty ?? 0) <= 0)}
+              >
                 Dispatch
               </Button>
             ) : null}
