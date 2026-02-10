@@ -149,6 +149,14 @@ type DraftLineForm = {
   taxPct: string;
 };
 
+type LastPriceInfo = {
+  source: "invoice" | "order";
+  unitPrice: number;
+  currency?: string | null;
+  date?: string | null;
+  soNumber?: string | null;
+} | null;
+
 type DeliveryFormLine = {
   lineId: string;
   sku: FinishedSku;
@@ -217,6 +225,7 @@ export default function SalesOrdersPage() {
   const [notes, setNotes] = useState<string>("");
   const [orderDate, setOrderDate] = useState<string>("");
   const [lines, setLines] = useState<DraftLineForm[]>([]);
+  const [lastPriceMap, setLastPriceMap] = useState<Record<string, LastPriceInfo>>({});
 
   const [detail, setDetail] = useState<SalesOrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -256,6 +265,27 @@ export default function SalesOrdersPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setLastPriceMap({});
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    const skuIds = Array.from(new Set(lines.map((line) => line.skuId).filter(Boolean)));
+    skuIds.forEach(async (skuId) => {
+      const key = `${customerId}:${skuId}`;
+      if (Object.prototype.hasOwnProperty.call(lastPriceMap, key)) return;
+      try {
+        const info = await apiGet<LastPriceInfo>(
+          `/api/sales-orders/last-price?customerId=${encodeURIComponent(customerId)}&skuId=${encodeURIComponent(skuId)}`
+        );
+        setLastPriceMap((prev) => ({ ...prev, [key]: info }));
+      } catch {
+        setLastPriceMap((prev) => ({ ...prev, [key]: null }));
+      }
+    });
+  }, [customerId, lines, lastPriceMap]);
 
   function resetForm() {
     setNotes("");
@@ -784,77 +814,90 @@ export default function SalesOrdersPage() {
                     Add sales order lines to begin.
                   </div>
                 ) : (
-                  lines.map((line, index) => (
-                    <div
-                      key={`${line.skuId}-${index}`}
-                      className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4"
-                    >
-                      <div className="grid gap-3 lg:grid-cols-2">
-                        <Select
-                          label="Finished SKU"
-                          value={line.skuId}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, skuId: value } : item))
-                            );
-                          }}
-                          options={skuOptions}
-                        />
-                        <Input
-                          label="Quantity"
-                          type="number"
-                          value={line.quantity}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
-                            );
-                          }}
-                          required
-                        />
-                        <Input
-                          label="Unit Price"
-                          type="number"
-                          value={line.unitPrice}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, unitPrice: value } : item))
-                            );
-                          }}
-                          required
-                        />
-                        <Input
-                          label="Discount %"
-                          type="number"
-                          value={line.discountPct}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, discountPct: value } : item))
-                            );
-                          }}
-                        />
-                        <Input
-                          label="Tax %"
-                          type="number"
-                          value={line.taxPct}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, taxPct: value } : item))
-                            );
-                          }}
-                        />
+                  lines.map((line, index) => {
+                    const lastKey = customerId && line.skuId ? `${customerId}:${line.skuId}` : "";
+                    const lastPrice = lastKey ? lastPriceMap[lastKey] : null;
+                    const lastPriceHint = line.skuId
+                      ? lastPrice
+                        ? `Last price: ${formatCurrency(lastPrice.unitPrice)}${lastPrice.soNumber ? ` · ${lastPrice.soNumber}` : ""}${
+                            lastPrice.date ? ` · ${formatDate(lastPrice.date)}` : ""
+                          }`
+                        : "No previous price for this customer."
+                      : undefined;
+
+                    return (
+                      <div
+                        key={`${line.skuId}-${index}`}
+                        className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4"
+                      >
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <Select
+                            label="Finished SKU"
+                            value={line.skuId}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, skuId: value } : item))
+                              );
+                            }}
+                            options={skuOptions}
+                          />
+                          <Input
+                            label="Quantity"
+                            type="number"
+                            value={line.quantity}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
+                              );
+                            }}
+                            required
+                          />
+                          <Input
+                            label="Unit Price"
+                            type="number"
+                            value={line.unitPrice}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, unitPrice: value } : item))
+                              );
+                            }}
+                            hint={lastPriceHint}
+                            required
+                          />
+                          <Input
+                            label="Discount %"
+                            type="number"
+                            value={line.discountPct}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, discountPct: value } : item))
+                              );
+                            }}
+                          />
+                          <Input
+                            label="Tax %"
+                            type="number"
+                            value={line.taxPct}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, taxPct: value } : item))
+                              );
+                            }}
+                          />
+                        </div>
+                        <div className="mt-3 flex justify-end">
+                          <Button variant="ghost" onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== index))}>
+                            Remove line
+                          </Button>
+                        </div>
                       </div>
-                      <div className="mt-3 flex justify-end">
-                        <Button variant="ghost" onClick={() => setLines((prev) => prev.filter((_, idx) => idx !== index))}>
-                          Remove line
-                        </Button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
