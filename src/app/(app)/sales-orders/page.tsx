@@ -231,8 +231,9 @@ export default function SalesOrdersPage() {
 
   const [detail, setDetail] = useState<SalesOrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [focusSection, setFocusSection] = useState<"procurement" | null>(null);
+  const [focusSection, setFocusSection] = useState<"procurement" | "deliveries" | null>(null);
   const procurementRef = useRef<HTMLDivElement | null>(null);
+  const deliveriesRef = useRef<HTMLDivElement | null>(null);
   const detailScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollRestoreRef = useRef<number | null>(null);
   const [subcontractVendorId, setSubcontractVendorId] = useState("");
@@ -397,7 +398,7 @@ export default function SalesOrdersPage() {
           openQty: Math.max(line.quantity - line.deliveredQty, 0),
           qty: "",
           deliveryDate: "",
-          packagingCost: "0",
+          packagingCost: "",
           notes: ""
         }))
         .filter((line) => line.openQty > 0);
@@ -424,8 +425,13 @@ export default function SalesOrdersPage() {
   }
 
   useEffect(() => {
-    if (detail && focusSection === "procurement") {
+    if (!detail) return;
+    if (focusSection === "procurement") {
       procurementRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setFocusSection(null);
+    }
+    if (focusSection === "deliveries") {
+      deliveriesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       setFocusSection(null);
     }
   }, [detail, focusSection]);
@@ -654,6 +660,12 @@ export default function SalesOrdersPage() {
       return;
     }
 
+    const missingCost = deliveryLinesWithQty.some((line) => line.packagingCost.trim() === "");
+    if (missingCost) {
+      push("error", "Enter delivery cost before posting the delivery");
+      return;
+    }
+
     try {
       const updated = await apiSend<SalesOrderDetail>(`/api/sales-orders/${detail.id}/deliveries`, "POST", {
         lines: payloadLines
@@ -741,8 +753,10 @@ export default function SalesOrdersPage() {
             {order.status === "DISPATCH" ? (
               <Button
                 variant="ghost"
-                onClick={() => markDelivered(order.id)}
-                disabled={!order.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity)}
+                onClick={() => {
+                  setFocusSection("deliveries");
+                  openDetail(order.id);
+                }}
               >
                 Mark Delivered
               </Button>
@@ -973,14 +987,25 @@ export default function SalesOrdersPage() {
                 {detail.status === "DISPATCH" ? (
                   <div className="mt-4">
                     <Button
-                      onClick={() => markDelivered(detail.id)}
-                      disabled={!detail.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity)}
+                      onClick={() => {
+                        const allDelivered = detail.lines.every(
+                          (line) => (line.deliveredQty ?? 0) >= line.quantity
+                        );
+                        const hasDeliveries = detail.deliveries.length > 0;
+                        if (!allDelivered || !hasDeliveries || deliveryLines.length > 0) {
+                          setFocusSection("deliveries");
+                          return;
+                        }
+                        markDelivered(detail.id);
+                      }}
                     >
                       Mark Delivered
                     </Button>
-                    {!detail.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity) ? (
-                      <p className="mt-2 text-xs text-text-muted">All lines must be delivered first.</p>
-                    ) : null}
+                    {detail.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity) ? null : (
+                      <p className="mt-2 text-xs text-text-muted">
+                        Record deliveries and delivery cost below before marking delivered.
+                      </p>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -1382,7 +1407,8 @@ export default function SalesOrdersPage() {
               </CardBody>
             </Card>
 
-            <Card>
+            <div ref={deliveriesRef}>
+              <Card>
               <CardHeader>
                 <CardTitle>Deliveries</CardTitle>
               </CardHeader>
@@ -1497,7 +1523,8 @@ export default function SalesOrdersPage() {
                   </div>
                 ) : null}
               </CardBody>
-            </Card>
+              </Card>
+            </div>
 
             <Card>
               <CardHeader>
