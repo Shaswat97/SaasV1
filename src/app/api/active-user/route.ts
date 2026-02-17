@@ -1,14 +1,25 @@
 import { jsonOk } from "@/lib/api-helpers";
-import { getAdminContext } from "@/lib/permissions";
+import { resolveAuthContext } from "@/lib/auth";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { actorName, actorEmployeeId, isAdmin } = await getAdminContext(request);
+  const prisma = await getTenantPrisma(request);
+  const auth = prisma ? await resolveAuthContext(request, prisma) : null;
+  if (!auth) {
+    return jsonOk({
+      actorName: "Anonymous",
+      actorEmployeeId: null,
+      isAdmin: false,
+      permissions: []
+    });
+  }
 
   return jsonOk({
-    actorName,
-    actorEmployeeId,
-    isAdmin
+    actorName: auth.employeeName,
+    actorEmployeeId: auth.employeeId,
+    isAdmin: auth.isAdmin,
+    permissions: auth.permissions
   });
 }

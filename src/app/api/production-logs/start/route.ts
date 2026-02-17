@@ -158,21 +158,84 @@ export async function POST(request: Request) {
               tx
             });
           }
-          const movement = await recordStockMovement(
-            {
+
+          let remaining = quantity;
+          const batches = await tx.rawMaterialBatch.findMany({
+            where: {
               companyId,
               skuId: line.rawSkuId,
               zoneId: rawZone.id,
-              quantity,
-              direction: "OUT",
-              movementType: "ISSUE",
-              referenceType: "PROD_LOG",
-              referenceId: log.id,
-              notes: "Raw consumed for production start"
+              quantityRemaining: { gt: 0 }
             },
-            tx
-          );
-          totalRawCost += movement.totalCost;
+            orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }]
+          });
+
+          for (const batch of batches) {
+            if (remaining <= 0) break;
+            const takeQty = Math.min(remaining, batch.quantityRemaining);
+            if (takeQty <= 0) continue;
+            const movement = await recordStockMovement(
+              {
+                companyId,
+                skuId: line.rawSkuId,
+                zoneId: rawZone.id,
+                quantity: takeQty,
+                direction: "OUT",
+                movementType: "ISSUE",
+                costPerUnit: batch.costPerUnit,
+                referenceType: "PROD_LOG",
+                referenceId: log.id,
+                notes: `Raw consumed for production start · batch ${batch.batchNumber}`
+              },
+              tx
+            );
+            totalRawCost += movement.totalCost;
+            remaining -= takeQty;
+
+            await tx.rawMaterialBatch.update({
+              where: { id: batch.id },
+              data: { quantityRemaining: { decrement: takeQty } }
+            });
+            await tx.productionLogConsumption.create({
+              data: {
+                companyId,
+                logId: log.id,
+                rawSkuId: line.rawSkuId,
+                batchId: batch.id,
+                quantity: takeQty,
+                costPerUnit: batch.costPerUnit,
+                bomQty: takeQty
+              }
+            });
+          }
+
+          if (remaining > 0) {
+            const movement = await recordStockMovement(
+              {
+                companyId,
+                skuId: line.rawSkuId,
+                zoneId: rawZone.id,
+                quantity: remaining,
+                direction: "OUT",
+                movementType: "ISSUE",
+                referenceType: "PROD_LOG",
+                referenceId: log.id,
+                notes: "Raw consumed for production start"
+              },
+              tx
+            );
+            totalRawCost += movement.totalCost;
+            await tx.productionLogConsumption.create({
+              data: {
+                companyId,
+                logId: log.id,
+                rawSkuId: line.rawSkuId,
+                quantity: remaining,
+                costPerUnit: movement.costPerUnit,
+                bomQty: remaining
+              }
+            });
+          }
         }
       }
 

@@ -12,11 +12,13 @@ export async function GET(request: Request) {
   if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
+  const vendorType = searchParams.get("vendorType")?.trim().toUpperCase();
   const companyId = await getDefaultCompanyId(prisma);
 
   const vendors = await prisma.vendor.findMany({
     where: {
       companyId,
+      ...(vendorType ? { vendorType } : {}),
       ...(includeDeleted ? {} : { deletedAt: null })
     },
     include: {

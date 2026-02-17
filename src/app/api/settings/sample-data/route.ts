@@ -4,6 +4,8 @@ import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
 import { promises as fs } from "fs";
 import path from "path";
+import { ensureDefaultRoles } from "@/lib/rbac-service";
+import { hashPin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -154,11 +156,13 @@ export async function POST(request: Request) {
     const sample = snapshot ?? defaultSample;
 
     const result = await prisma.$transaction(async (tx) => {
-      const adminRole = await tx.role.upsert({
-        where: { companyId_name: { companyId, name: "ADMIN" } },
-        update: {},
-        create: { companyId, name: "ADMIN" }
+      await ensureDefaultRoles(tx, companyId);
+      const adminRole = await tx.role.findUnique({
+        where: { companyId_name: { companyId, name: "ADMIN" } }
       });
+      if (!adminRole) {
+        throw new Error("ADMIN role missing");
+      }
 
       const vendors = await Promise.all(
         sample.vendors.map((vendor) =>
@@ -262,6 +266,8 @@ export async function POST(request: Request) {
               name: employee.name,
               phone: employee.phone ?? undefined,
               email: employee.email ?? undefined,
+              pinHash: hashPin("1234"),
+              pinUpdatedAt: new Date(),
               active: employee.active ?? true
             },
             create: {
@@ -270,6 +276,8 @@ export async function POST(request: Request) {
               name: employee.name,
               phone: employee.phone ?? undefined,
               email: employee.email ?? undefined,
+              pinHash: hashPin("1234"),
+              pinUpdatedAt: new Date(),
               active: employee.active ?? true
             }
           })

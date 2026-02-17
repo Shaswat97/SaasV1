@@ -55,6 +55,26 @@ type PurchaseOrder = {
   notes?: string | null;
 };
 
+type VendorBill = {
+  id: string;
+  billNumber?: string | null;
+  status: string;
+  billDate: string;
+  dueDate?: string | null;
+  totalAmount: number;
+  balanceAmount: number;
+  vendor: Vendor;
+  purchaseOrder?: { id: string; poNumber?: string | null } | null;
+  receipt?: { id: string; receivedAt: string } | null;
+  lines: Array<{
+    id: string;
+    quantity: number;
+    unitPrice: number;
+    totalCost: number;
+    sku: { id: string; code: string; name: string; unit: string };
+  }>;
+};
+
 type DraftLineForm = {
   skuId: string;
   quantity: string;
@@ -104,6 +124,22 @@ function lineNetTotal(line: { quantity: number; unitPrice: number; discountPct?:
   const tax = line.taxPct ?? 0;
   const discounted = line.unitPrice * (1 - discount / 100);
   return line.quantity * discounted * (1 + tax / 100);
+}
+
+function summarizeBillSkus(lines: VendorBill["lines"]) {
+  if (!lines.length) return "—";
+  const labels = lines.map((line) => `${line.sku.code} · ${line.sku.name}`);
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2} more`;
+}
+
+function summarizeBillUnitPrice(lines: VendorBill["lines"]) {
+  if (!lines.length) return "—";
+  const prices = lines.map((line) => line.unitPrice);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (min === max) return min.toFixed(2);
+  return `${min.toFixed(2)} - ${max.toFixed(2)}`;
 }
 
 function paginate<T>(items: T[], page: number) {
@@ -157,6 +193,7 @@ export default function PurchasingPage() {
   const [vendorSkus, setVendorSkus] = useState<VendorSku[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -170,6 +207,19 @@ export default function PurchasingPage() {
   const [receiveZoneId, setReceiveZoneId] = useState<string>("");
   const [lastReceiptId, setLastReceiptId] = useState<string | null>(null);
   const receiveRef = useRef<HTMLDivElement | null>(null);
+  const [billPaymentId, setBillPaymentId] = useState("");
+  const [billPaymentAmount, setBillPaymentAmount] = useState("");
+  const [billPaymentDate, setBillPaymentDate] = useState(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
+  const [billPaymentMethod, setBillPaymentMethod] = useState("");
+  const [billPaymentReference, setBillPaymentReference] = useState("");
+  const [billPaymentNotes, setBillPaymentNotes] = useState("");
+  const [billPaymentSubmitting, setBillPaymentSubmitting] = useState(false);
 
   const [search, setSearch] = useState("");
   const [vendorFilter, setVendorFilter] = useState("ALL");
@@ -189,16 +239,18 @@ export default function PurchasingPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [vendorData, skuData, zoneData, orderData] = await Promise.all([
+      const [vendorData, skuData, zoneData, orderData, billData] = await Promise.all([
         apiGet<Vendor[]>("/api/vendors"),
         apiGet<RawSku[]>("/api/raw-skus"),
         apiGet<Zone[]>("/api/zones"),
-        apiGet<PurchaseOrder[]>("/api/purchase-orders?includeDeleted=true")
+        apiGet<PurchaseOrder[]>("/api/purchase-orders?includeDeleted=true"),
+        apiGet<VendorBill[]>("/api/vendor-bills")
       ]);
       setVendors(vendorData);
       setRawSkus(skuData);
       setZones(zoneData);
       setOrders(orderData);
+      setVendorBills(billData);
       if (!vendorId) {
         const firstRaw = vendorData.find((vendor) => (vendor.vendorType ?? "RAW") === "RAW");
         if (firstRaw) setVendorId(firstRaw.id);
@@ -432,6 +484,39 @@ export default function PurchasingPage() {
     window.open(`/api/goods-receipts/${receiptId}/pdf`, "_blank");
   }
 
+  async function submitVendorPayment() {
+    if (!billPaymentId) {
+      push("error", "Select a vendor bill to record payment");
+      return;
+    }
+    const amount = Number(billPaymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      push("error", "Enter a valid payment amount");
+      return;
+    }
+    setBillPaymentSubmitting(true);
+    try {
+      await apiSend("/api/vendor-payments", "POST", {
+        billId: billPaymentId,
+        amount,
+        paymentDate: billPaymentDate ? new Date(billPaymentDate).toISOString() : undefined,
+        method: billPaymentMethod || undefined,
+        reference: billPaymentReference || undefined,
+        notes: billPaymentNotes || undefined
+      });
+      push("success", "Vendor payment recorded");
+      setBillPaymentAmount("");
+      setBillPaymentMethod("");
+      setBillPaymentReference("");
+      setBillPaymentNotes("");
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to record vendor payment");
+    } finally {
+      setBillPaymentSubmitting(false);
+    }
+  }
+
   function openReceive(order: PurchaseOrder) {
     if (order.status !== "APPROVED") {
       push("error", "Only approved orders can be received");
@@ -621,6 +706,23 @@ export default function PurchasingPage() {
     const finished = zones.filter((zone) => zone.type === "FINISHED");
     return finished.map((zone) => ({ value: zone.id, label: `${zone.name} · ${zone.code}` }));
   }, [zones]);
+
+  const openBills = useMemo(() => vendorBills.filter((bill) => bill.balanceAmount > 0), [vendorBills]);
+
+  const billOptions = useMemo(
+    () =>
+      openBills.map((bill) => ({
+        value: bill.id,
+        label: `${bill.billNumber ?? bill.id} · ${bill.vendor.name} · ${summarizeBillSkus(bill.lines)} · Bal ${bill.balanceAmount.toFixed(2)}`
+      })),
+    [openBills]
+  );
+
+  useEffect(() => {
+    if (!billPaymentId || !openBills.some((bill) => bill.id === billPaymentId)) {
+      setBillPaymentId(openBills[0]?.id ?? "");
+    }
+  }, [openBills, billPaymentId]);
 
   function exportPdf() {
     const buildTable = (items: PurchaseOrder[]) => {
@@ -1378,6 +1480,97 @@ export default function PurchasingPage() {
           </CardBody>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Vendor Bills</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <DataTable
+            columns={[
+              { key: "bill", label: "Bill" },
+              { key: "vendor", label: "Vendor" },
+              { key: "sku", label: "SKU Name" },
+              { key: "unitPrice", label: "Unit Price", align: "right" },
+              { key: "po", label: "PO" },
+              { key: "billDate", label: "Bill Date" },
+              { key: "dueDate", label: "Due Date" },
+              { key: "total", label: "Total", align: "right" },
+              { key: "balance", label: "Balance", align: "right" },
+              { key: "status", label: "Status" },
+              { key: "receipt", label: "" }
+            ]}
+            rows={vendorBills.map((bill) => ({
+              bill: bill.billNumber ?? "—",
+              vendor: bill.vendor.name,
+              sku: summarizeBillSkus(bill.lines),
+              unitPrice: summarizeBillUnitPrice(bill.lines),
+              po: bill.purchaseOrder?.poNumber ?? "—",
+              billDate: new Date(bill.billDate).toLocaleDateString("en-IN"),
+              dueDate: bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN") : "—",
+              total: bill.totalAmount.toFixed(2),
+              balance: bill.balanceAmount.toFixed(2),
+              status: bill.status,
+              receipt: bill.receipt?.id ? (
+                <Button variant="ghost" onClick={() => downloadReceipt(bill.receipt!.id)}>
+                  Receipt
+                </Button>
+              ) : (
+                "—"
+              )
+            }))}
+            emptyLabel={loading ? "Loading bills..." : "No vendor bills yet."}
+          />
+
+          <div className="mt-6 space-y-4">
+            <p className="text-sm font-medium text-text">Record Vendor Payment</p>
+            {billOptions.length ? (
+              <div className="grid gap-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4 lg:grid-cols-2">
+                <Select
+                  label="Bill"
+                  value={billPaymentId}
+                  onChange={(event) => setBillPaymentId(event.target.value)}
+                  options={billOptions}
+                />
+                <Input
+                  label="Amount"
+                  type="number"
+                  value={billPaymentAmount}
+                  onChange={(event) => setBillPaymentAmount(event.target.value)}
+                />
+                <Input
+                  label="Payment Date"
+                  type="date"
+                  value={billPaymentDate}
+                  onChange={(event) => setBillPaymentDate(event.target.value)}
+                />
+                <Input
+                  label="Method"
+                  value={billPaymentMethod}
+                  onChange={(event) => setBillPaymentMethod(event.target.value)}
+                />
+                <Input
+                  label="Reference"
+                  value={billPaymentReference}
+                  onChange={(event) => setBillPaymentReference(event.target.value)}
+                />
+                <Input
+                  label="Notes"
+                  value={billPaymentNotes}
+                  onChange={(event) => setBillPaymentNotes(event.target.value)}
+                />
+                <div className="flex items-end">
+                  <Button onClick={submitVendorPayment} disabled={billPaymentSubmitting}>
+                    Record Payment
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted">No unpaid vendor bills available.</p>
+            )}
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

@@ -65,7 +65,7 @@ export default function SettingsPage() {
               { label: "Vendors", href: "/settings/master-data/vendors", description: "Raw suppliers" },
               { label: "Customers", href: "/settings/master-data/customers", description: "Sales accounts" },
               { label: "Employees", href: "/settings/master-data/employees", description: "Directory & access" },
-              { label: "Roles", href: "/settings/master-data/roles", description: "Admin role settings" },
+              { label: "Roles", href: "/settings/master-data/roles", description: "Role templates & permissions" },
               { label: "Warehouses", href: "/settings/master-data/warehouses", description: "Storage sites" },
               { label: "Zones", href: "/settings/master-data/zones", description: "Operational zones" },
               { label: "Machines & Machine SKUs", href: "/settings/master-data/machines-routing", description: "Assets, capacity & routing rates" },

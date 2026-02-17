@@ -9,17 +9,32 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   const prisma = await getTenantPrisma();
   if (!prisma) return jsonError("Tenant not found", 404);
   const companyId = await getDefaultCompanyId(prisma);
-  const order = await prisma.salesOrder.findFirst({
+  let order = await prisma.salesOrder.findFirst({
     where: { id: params.id, companyId, deletedAt: null },
     include: {
       customer: true,
       lines: { include: { sku: true } },
       deliveries: { include: { line: { include: { sku: true } } } },
-      invoices: { include: { lines: { include: { sku: true } }, delivery: true } }
+      invoices: { include: { lines: { include: { sku: true } }, delivery: true, payments: { include: { payment: true } } } }
     }
   });
 
   if (!order) return jsonError("Sales order not found", 404);
+  if (order.status === "DISPATCH" && order.deliveries.length > 0) {
+    const allDelivered = order.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity);
+    if (allDelivered) {
+      order = await prisma.salesOrder.update({
+        where: { id: order.id },
+        data: { status: "DELIVERED" },
+        include: {
+          customer: true,
+          lines: { include: { sku: true } },
+          deliveries: { include: { line: { include: { sku: true } } } },
+          invoices: { include: { lines: { include: { sku: true } }, delivery: true, payments: { include: { payment: true } } } }
+        }
+      });
+    }
+  }
 
   const availability = await computeAvailabilitySummary({
     companyId,

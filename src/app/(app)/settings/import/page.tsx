@@ -138,7 +138,7 @@ export default function ImportCenterPage() {
           </p>
           {!isAdmin ? (
             <p className="mt-2 text-sm text-danger">
-              Admin role required. Select an Admin in the Active User dropdown before importing.
+              Admin permission required before importing.
             </p>
           ) : null}
         </CardBody>

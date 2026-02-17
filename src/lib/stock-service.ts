@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient, StockLedger } from "@prisma/client";
 import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 export type MovementDirection = "IN" | "OUT";
-export type MovementType = "RECEIPT" | "ISSUE" | "TRANSFER" | "ADJUSTMENT" | "PRODUCE";
+export type MovementType = "RECEIPT" | "ISSUE" | "TRANSFER" | "ADJUSTMENT" | "PRODUCE" | "SCRAP_SALE";
 
 export type StockMovementInput = {
   companyId: string;
@@ -94,7 +94,10 @@ export async function recordStockMovement(
     throw new Error("Cost per unit is required for inbound movements");
   }
 
-  const movementCost = input.direction === "IN" ? (resolvedCost ?? 0) : currentCostPerUnit;
+  const movementCost =
+    input.direction === "IN"
+      ? (resolvedCost ?? 0)
+      : (input.costPerUnit !== undefined && input.costPerUnit !== null ? input.costPerUnit : currentCostPerUnit);
   const quantityDelta = input.direction === "IN" ? input.quantity : -input.quantity;
 
   let nextQty = currentQty + quantityDelta;

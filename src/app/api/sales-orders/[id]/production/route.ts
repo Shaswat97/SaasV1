@@ -2,14 +2,19 @@ import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "sales.production");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
 
   const order = await prisma.salesOrder.findFirst({
     where: { id: params.id, companyId, deletedAt: null },

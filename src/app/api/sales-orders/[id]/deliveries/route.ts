@@ -4,14 +4,15 @@ import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { recordStockMovement } from "@/lib/stock-service";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 const deliveryLineSchema = z.object({
   lineId: z.string().min(1),
   quantity: z.number().positive("Quantity must be greater than 0"),
-  packagingCost: z.number().min(0).optional(),
-  deliveryDate: z.string().datetime().optional(),
+  packagingCost: z.number().min(0, "Delivery cost is required"),
+  deliveryDate: z.string().datetime("Delivery date is required"),
   notes: z.string().optional()
 });
 
@@ -20,7 +21,9 @@ const deliverySchema = z.object({
 });
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "sales.deliver");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
@@ -33,13 +36,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const parsed = deliverySchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
   const order = await prisma.salesOrder.findFirst({
     where: { id: params.id, companyId, deletedAt: null },
     include: { lines: true }
   });
   if (!order) return jsonError("Sales order not found", 404);
+  if (order.status !== "DISPATCH") {
+    return jsonError("Only dispatched orders can record deliveries", 400);
+  }
 
   const lineMap = new Map(order.lines.map((line) => [line.id, line]));
 
@@ -67,8 +75,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
           salesOrderId: order.id,
           soLineId: line.lineId,
           quantity: line.quantity,
-          packagingCost: line.packagingCost ?? 0,
-          deliveryDate: line.deliveryDate ? new Date(line.deliveryDate) : undefined,
+          packagingCost: line.packagingCost,
+          deliveryDate: new Date(line.deliveryDate),
           notes: line.notes
         }
       });
@@ -110,7 +118,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
       );
     }
 
-    const nextStatus = ["CONFIRMED", "PRODUCTION"].includes(order.status) ? "DISPATCH" : order.status;
+    const refreshedLines = await tx.salesOrderLine.findMany({
+      where: { salesOrderId: order.id },
+      select: { quantity: true, deliveredQty: true }
+    });
+    const allDelivered = refreshedLines.every((line) => (line.deliveredQty ?? 0) >= line.quantity);
+    const nextStatus = allDelivered ? "DELIVERED" : "DISPATCH";
     if (nextStatus !== order.status) {
       await tx.salesOrder.update({
         where: { id: order.id },

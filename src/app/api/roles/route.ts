@@ -1,20 +1,29 @@
-import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
-import { roleNameSchema } from "@/lib/validation";
+import { roleNameSchema, rolePermissionsSchema } from "@/lib/validation";
 import { z } from "zod";
 import { getDefaultCompanyId } from "@/lib/tenant";
-import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { recordActivity } from "@/lib/activity";
+import { normalizePermissions } from "@/lib/rbac";
+import { ensureDefaultRoles, getGroupedPermissionCatalog } from "@/lib/rbac-service";
+import { requireAnyPermission, requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
-const rolePayloadSchema = z.object({ name: roleNameSchema });
+const rolePayloadSchema = z.object({
+  name: roleNameSchema,
+  permissions: rolePermissionsSchema
+});
 
 export async function GET(request: Request) {
-  const prisma = await getTenantPrisma();
+  const guard = await requireAnyPermission(request, ["users.manage_roles", "users.manage_employees"]);
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
-  const companyId = await getDefaultCompanyId(prisma);
+  const includeCatalog = searchParams.get("includeCatalog") === "true";
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  await ensureDefaultRoles(prisma, companyId);
 
   const roles = await prisma.role.findMany({
     where: {
@@ -24,11 +33,17 @@ export async function GET(request: Request) {
     orderBy: { createdAt: "asc" }
   });
 
+  if (includeCatalog) {
+    return jsonOk({ roles, permissionCatalog: getGroupedPermissionCatalog() });
+  }
+
   return jsonOk(roles);
 }
 
 export async function POST(request: Request) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "users.manage_roles");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
@@ -41,14 +56,21 @@ export async function POST(request: Request) {
   const parsed = rolePayloadSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const actorName = guard.context?.actorName ?? "Admin";
+  const actorEmployeeId = guard.context?.actorEmployeeId ?? null;
+  const normalizedName = parsed.data.name.trim().toUpperCase();
+  const rolePermissions = normalizePermissions(parsed.data.permissions);
+  if (rolePermissions.length === 0) {
+    return jsonError("At least one permission is required", 400);
+  }
 
   try {
     const role = await prisma.role.create({
       data: {
         companyId,
-        name: parsed.data.name
+        name: normalizedName,
+        permissions: rolePermissions
       }
     });
 

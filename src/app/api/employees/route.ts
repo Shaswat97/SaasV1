@@ -3,15 +3,19 @@ import { employeeSchema } from "@/lib/validation";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { hashPin } from "@/lib/auth";
+import { requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "users.manage_employees");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   const { searchParams } = new URL(request.url);
   const includeDeleted = searchParams.get("includeDeleted") === "true";
-  const companyId = await getDefaultCompanyId(prisma);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
 
   const employees = await prisma.employee.findMany({
     where: {
@@ -30,7 +34,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "users.manage_employees");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
@@ -43,18 +49,21 @@ export async function POST(request: Request) {
   const parsed = employeeSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
+  const roleNames = parsed.data.roles.map((role) => role.trim().toUpperCase());
 
   const roles = await prisma.role.findMany({
     where: {
       companyId,
-      name: { in: parsed.data.roles },
+      name: { in: roleNames },
       deletedAt: null
     }
   });
 
-  if (roles.length !== parsed.data.roles.length) {
+  if (roles.length !== roleNames.length) {
     return jsonError("One or more roles are invalid", 400);
   }
 
@@ -67,6 +76,8 @@ export async function POST(request: Request) {
           name: parsed.data.name,
           phone: parsed.data.phone,
           email: parsed.data.email,
+          pinHash: hashPin(parsed.data.pin ?? "1234"),
+          pinUpdatedAt: new Date(),
           active: parsed.data.active ?? true
         }
       });

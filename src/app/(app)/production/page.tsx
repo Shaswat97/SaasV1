@@ -38,6 +38,15 @@ type FinishedSku = { id: string; code: string; name: string; unit: string };
 
 type RawSku = { id: string; code: string; name: string; unit: string };
 
+type RawBatch = {
+  id: string;
+  skuId: string;
+  batchNumber: string;
+  receivedAt: string;
+  quantityRemaining: number;
+  costPerUnit: number;
+};
+
 type Bom = {
   finishedSkuId: string;
   version: number;
@@ -97,7 +106,15 @@ type ProductionLog = {
     endAt?: string | null;
     employee: Employee;
   }>;
-  consumptions?: Array<{ rawSkuId: string; quantity: number; rawSku: RawSku }>;
+  consumptions?: Array<{
+    rawSkuId: string;
+    batchId?: string | null;
+    quantity: number;
+    bomQty?: number | null;
+    costPerUnit?: number | null;
+    rawSku: RawSku;
+    batch?: RawBatch | null;
+  }>;
   finishedSku: FinishedSku;
   machine: Machine;
   operator?: Employee | null;
@@ -110,6 +127,8 @@ type ProductionLog = {
 
 type RawConsumptionRow = {
   rawSkuId: string;
+  batchId: string;
+  bomQty: string;
   quantity: string;
 };
 
@@ -126,6 +145,60 @@ type CrewCloseRow = {
   startAt: string;
   endAt: string;
 };
+
+function buildRawConsumptionRows(
+  selectedCloseLog: ProductionLog,
+  bomMap: Map<string, Bom>,
+  rawBatches: RawBatch[],
+  outputQty: number
+): RawConsumptionRow[] {
+  const bom = bomMap.get(selectedCloseLog.finishedSku.id);
+  if (!bom) return [];
+  const baseQty = Math.max(outputQty, 0);
+  const rows: RawConsumptionRow[] = [];
+
+  bom.lines.forEach((line) => {
+    const plannedRawQty = baseQty ? baseQty * line.quantity : 0;
+    let remaining = plannedRawQty;
+    const skuBatches = rawBatches
+      .filter((batch) => batch.skuId === line.rawSkuId && batch.quantityRemaining > 0)
+      .sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
+
+    if (!skuBatches.length) {
+      rows.push({
+        rawSkuId: line.rawSkuId,
+        batchId: "",
+        bomQty: plannedRawQty ? plannedRawQty.toString() : "",
+        quantity: plannedRawQty ? plannedRawQty.toString() : ""
+      });
+      return;
+    }
+
+    skuBatches.forEach((batch) => {
+      if (remaining <= 0) return;
+      const take = Math.min(remaining, batch.quantityRemaining);
+      if (take <= 0) return;
+      rows.push({
+        rawSkuId: line.rawSkuId,
+        batchId: batch.id,
+        bomQty: take.toString(),
+        quantity: take.toString()
+      });
+      remaining -= take;
+    });
+
+    if (remaining > 0) {
+      rows.push({
+        rawSkuId: line.rawSkuId,
+        batchId: "",
+        bomQty: remaining.toString(),
+        quantity: remaining.toString()
+      });
+    }
+  });
+
+  return rows;
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -178,6 +251,7 @@ export default function ProductionPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [finishedSkus, setFinishedSkus] = useState<FinishedSku[]>([]);
   const [rawSkus, setRawSkus] = useState<RawSku[]>([]);
+  const [rawBatches, setRawBatches] = useState<RawBatch[]>([]);
   const [boms, setBoms] = useState<Bom[]>([]);
   const [routings, setRoutings] = useState<Routing[]>([]);
   const [backlog, setBacklog] = useState<BacklogLine[]>([]);
@@ -202,17 +276,19 @@ export default function ProductionPage() {
   const [closeNotes, setCloseNotes] = useState("");
   const [closeCrewRows, setCloseCrewRows] = useState<CrewCloseRow[]>([]);
   const [rawConsumptions, setRawConsumptions] = useState<RawConsumptionRow[]>([]);
+  const [rawRowsAuto, setRawRowsAuto] = useState(true);
 
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [machineData, employeeData, skuData, rawSkuData, bomData, routingData, backlogData, logData] = await Promise.all([
+      const [machineData, employeeData, skuData, rawSkuData, rawBatchData, bomData, routingData, backlogData, logData] = await Promise.all([
         apiGet<Machine[]>("/api/machines"),
         apiGet<Employee[]>("/api/employees"),
         apiGet<FinishedSku[]>("/api/finished-skus"),
         apiGet<RawSku[]>("/api/raw-skus"),
+        apiGet<RawBatch[]>("/api/raw-batches"),
         apiGet<Bom[]>("/api/boms"),
         apiGet<Routing[]>("/api/routings"),
         apiGet<BacklogLine[]>("/api/production-logs/backlog"),
@@ -222,6 +298,7 @@ export default function ProductionPage() {
       setEmployees(employeeData);
       setFinishedSkus(skuData);
       setRawSkus(rawSkuData);
+      setRawBatches(rawBatchData);
       setBoms(bomData);
       setRoutings(routingData);
       setBacklog(backlogData);
@@ -323,6 +400,18 @@ export default function ProductionPage() {
   );
 
   const rawSkuMap = useMemo(() => new Map(rawSkus.map((sku) => [sku.id, sku])), [rawSkus]);
+  const rawBatchMap = useMemo(() => new Map(rawBatches.map((batch) => [batch.id, batch])), [rawBatches]);
+  const batchOptionsBySku = useMemo(() => {
+    const map = new Map<string, Array<{ value: string; label: string }>>();
+    rawBatches.forEach((batch) => {
+      if (!map.has(batch.skuId)) map.set(batch.skuId, []);
+      map.get(batch.skuId)!.push({
+        value: batch.id,
+        label: `${batch.batchNumber} · ${batch.quantityRemaining} @ ₹${batch.costPerUnit.toFixed(2)}`
+      });
+    });
+    return map;
+  }, [rawBatches]);
 
   const bomMap = useMemo(() => {
     const map = new Map<string, Bom>();
@@ -353,7 +442,7 @@ export default function ProductionPage() {
       openLogs.map((log) => ({
         value: log.id,
         label: `${log.finishedSku.code} · ${log.machine.code} · ${Math.max(
-          log.plannedQty - (log.goodQty + log.rejectQty + log.scrapQty),
+          log.plannedQty - log.goodQty,
           0
         )} ${log.finishedSku.unit} remaining`
       })),
@@ -361,6 +450,14 @@ export default function ProductionPage() {
   );
 
   const selectedCloseLog = useMemo(() => logs.find((log) => log.id === closeLogId), [logs, closeLogId]);
+  const closeTotalQty = useMemo(
+    () => Number(goodQty || 0) + Number(rejectQty || 0) + Number(scrapQty || 0),
+    [goodQty, rejectQty, scrapQty]
+  );
+  const closeRemainingQty = useMemo(() => {
+    if (!selectedCloseLog) return 0;
+    return Math.max(selectedCloseLog.plannedQty - (selectedCloseLog.goodQty ?? 0), 0);
+  }, [selectedCloseLog]);
 
   useEffect(() => {
     if (!machineOptions.length) {
@@ -384,11 +481,18 @@ export default function ProductionPage() {
 
   useEffect(() => {
     if (!selectedCloseLog) {
+      setGoodQty("");
+      setRejectQty("");
+      setScrapQty("");
       setCloseCrewRows([]);
       setRawConsumptions([]);
+      setRawRowsAuto(true);
       return;
     }
-    const rows =
+    setGoodQty("");
+    setRejectQty("");
+    setScrapQty("");
+    const crewRowsForClose =
       selectedCloseLog.crewAssignments?.map((entry) => ({
         crewId: entry.id,
         employeeName: entry.employee.name,
@@ -396,29 +500,16 @@ export default function ProductionPage() {
         startAt: toLocalInput(entry.startAt),
         endAt: toLocalInput(entry.endAt)
       })) ?? [];
-    setCloseCrewRows(rows);
-    if (selectedCloseLog.consumptions && selectedCloseLog.consumptions.length) {
-      setRawConsumptions(
-        selectedCloseLog.consumptions.map((entry) => ({
-          rawSkuId: entry.rawSkuId,
-          quantity: entry.quantity.toString()
-        }))
-      );
-      return;
-    }
-    const bom = bomMap.get(selectedCloseLog.finishedSku.id);
-    if (!bom) {
-      setRawConsumptions([]);
-      return;
-    }
-    const baseQty = selectedCloseLog.plannedQty ?? 0;
-    setRawConsumptions(
-      bom.lines.map((line) => ({
-        rawSkuId: line.rawSkuId,
-        quantity: baseQty ? (baseQty * line.quantity).toString() : ""
-      }))
-    );
-  }, [selectedCloseLog, bomMap]);
+    setCloseCrewRows(crewRowsForClose);
+    setRawRowsAuto(true);
+    setRawConsumptions(buildRawConsumptionRows(selectedCloseLog, bomMap, rawBatches, closeRemainingQty));
+  }, [selectedCloseLog, bomMap, rawBatches, closeRemainingQty]);
+
+  useEffect(() => {
+    if (!selectedCloseLog || !rawRowsAuto) return;
+    const outputQty = closeTotalQty > 0 ? closeTotalQty : closeRemainingQty;
+    setRawConsumptions(buildRawConsumptionRows(selectedCloseLog, bomMap, rawBatches, outputQty));
+  }, [selectedCloseLog, rawRowsAuto, closeTotalQty, closeRemainingQty, bomMap, rawBatches]);
 
   useEffect(() => {
     if (!closeAt) return;
@@ -447,7 +538,13 @@ export default function ProductionPage() {
       push("error", "Add raw SKUs before logging consumption");
       return;
     }
-    setRawConsumptions((prev) => [...prev, { rawSkuId: rawSkus[0].id, quantity: "" }]);
+    setRawRowsAuto(false);
+    const firstSkuId = rawSkus[0].id;
+    const firstBatchId = (batchOptionsBySku.get(firstSkuId) ?? [])[0]?.value ?? "";
+    setRawConsumptions((prev) => [
+      ...prev,
+      { rawSkuId: firstSkuId, batchId: firstBatchId, bomQty: "", quantity: "" }
+    ]);
   }
 
   async function startLog(event: FormEvent) {
@@ -519,22 +616,38 @@ export default function ProductionPage() {
       return;
     }
 
-    const good = Number(goodQty || 0);
+    if (!goodQty.trim()) {
+      push("error", "Good Qty is required to close the log");
+      return;
+    }
+    const good = Number(goodQty);
     const reject = Number(rejectQty || 0);
     const scrap = Number(scrapQty || 0);
+    if (!Number.isFinite(good) || good <= 0) {
+      push("error", "Good Qty must be greater than 0");
+      return;
+    }
+    if (!Number.isFinite(reject) || !Number.isFinite(scrap)) {
+      push("error", "Reject and Scrap Qty must be valid numbers");
+      return;
+    }
     const consumptionPayload = rawConsumptions
       .filter((row) => row.rawSkuId)
-      .map((row) => ({ rawSkuId: row.rawSkuId, quantity: Number(row.quantity || 0) }));
-    const rawSkuSet = new Set(consumptionPayload.map((row) => row.rawSkuId));
-    if (rawSkuSet.size !== consumptionPayload.length) {
-      push("error", "Duplicate raw SKUs are not allowed in consumption");
+      .map((row) => ({
+        rawSkuId: row.rawSkuId,
+        batchId: row.batchId || undefined,
+        bomQty: row.bomQty ? Number(row.bomQty) : undefined,
+        quantity: Number(row.quantity || 0)
+      }));
+    const keySet = new Set(consumptionPayload.map((row) => `${row.rawSkuId}:${row.batchId ?? "NO_BATCH"}`));
+    if (keySet.size !== consumptionPayload.length) {
+      push("error", "Duplicate raw SKU + batch rows are not allowed in consumption");
       return;
     }
     if (consumptionPayload.some((row) => row.quantity < 0)) {
       push("error", "Raw consumption quantities cannot be negative");
       return;
     }
-
     try {
       await apiSend(`/api/production-logs/${closeLogId}/close`, "POST", {
         goodQty: good,
@@ -557,6 +670,9 @@ export default function ProductionPage() {
       setCloseNotes("");
       setCloseCrewRows([]);
       setRawConsumptions([]);
+      setRawRowsAuto(true);
+      setCrewRows([]);
+      setStartAt("");
       loadData();
     } catch (error: any) {
       push("error", error.message ?? "Failed to close log");
@@ -800,7 +916,7 @@ export default function ProductionPage() {
                     </div>
                   </div>
                 ) : null}
-                <Input label="Good Qty" type="number" value={goodQty} onChange={(event) => setGoodQty(event.target.value)} />
+                <Input label="Good Qty" type="number" required value={goodQty} onChange={(event) => setGoodQty(event.target.value)} />
                 <Input
                   label="Reject Qty"
                   type="number"
@@ -826,21 +942,51 @@ export default function ProductionPage() {
                     <div className="space-y-3">
                       {rawConsumptions.map((row, index) => {
                         const raw = rawSkuMap.get(row.rawSkuId);
+                        const batchOptions = batchOptionsBySku.get(row.rawSkuId) ?? [];
+                        const batch = row.batchId ? rawBatchMap.get(row.batchId) : undefined;
                         return (
                           <div
                             key={`${row.rawSkuId}-${index}`}
-                            className="grid gap-3 lg:grid-cols-[2fr_1fr_auto]"
+                            className="grid gap-3 lg:grid-cols-[1.8fr_2.2fr_1fr_1fr_auto]"
                           >
                             <Select
                               label="Raw SKU"
                               value={row.rawSkuId}
                               onChange={(event) => {
                                 const value = event.target.value;
+                                const nextBatchId = (batchOptionsBySku.get(value) ?? [])[0]?.value ?? "";
                                 setRawConsumptions((prev) =>
-                                  prev.map((item, idx) => (idx === index ? { ...item, rawSkuId: value } : item))
+                                  prev.map((item, idx) =>
+                                    idx === index ? { ...item, rawSkuId: value, batchId: nextBatchId } : item
+                                  )
                                 );
+                                setRawRowsAuto(false);
                               }}
                               options={rawSkuOptions}
+                            />
+                            <Select
+                              label="Batch"
+                              value={row.batchId}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setRawConsumptions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, batchId: value } : item))
+                                );
+                                setRawRowsAuto(false);
+                              }}
+                              options={[{ value: "", label: "No batch selected" }, ...batchOptions]}
+                            />
+                            <Input
+                              label={`BOM Qty${raw ? ` (${raw.unit})` : ""}`}
+                              type="number"
+                              value={row.bomQty}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setRawConsumptions((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, bomQty: value } : item))
+                                );
+                                setRawRowsAuto(false);
+                              }}
                             />
                             <Input
                               label={`Quantity${raw ? ` (${raw.unit})` : ""}`}
@@ -851,13 +997,20 @@ export default function ProductionPage() {
                                 setRawConsumptions((prev) =>
                                   prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
                                 );
+                                setRawRowsAuto(false);
                               }}
                             />
+                            <div className="flex flex-col justify-end pb-2 text-xs text-text-muted">
+                              CP: {batch ? `₹${batch.costPerUnit.toFixed(2)}` : "—"}
+                            </div>
                             <div className="flex items-end">
                               <Button
                                 type="button"
                                 variant="ghost"
-                                onClick={() => setRawConsumptions((prev) => prev.filter((_, idx) => idx !== index))}
+                                onClick={() => {
+                                  setRawConsumptions((prev) => prev.filter((_, idx) => idx !== index));
+                                  setRawRowsAuto(false);
+                                }}
                               >
                                 Remove
                               </Button>
@@ -868,7 +1021,7 @@ export default function ProductionPage() {
                     </div>
                   )}
                   <p className="text-xs text-text-muted">
-                    Enter total actual raw consumed for this log. Adjustments apply when the log is fully closed.
+                    Select raw batch + quantity to track lot-wise CP and BOM-to-actual usage.
                   </p>
                 </div>
                 <Input

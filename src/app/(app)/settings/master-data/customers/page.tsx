@@ -30,6 +30,8 @@ type Customer = {
   shippingState?: string | null;
   shippingPostalCode?: string | null;
   shippingCountry?: string | null;
+  creditDays?: number | null;
+  remindBeforeDays?: number | null;
   active: boolean;
 };
 
@@ -51,6 +53,8 @@ const emptyForm = {
   shippingState: "",
   shippingPostalCode: "",
   shippingCountry: "",
+  creditDays: "0",
+  remindBeforeDays: "3",
   active: true
 };
 
@@ -110,6 +114,8 @@ export default function CustomersPage() {
       shippingState: customer.shippingState ?? "",
       shippingPostalCode: customer.shippingPostalCode ?? "",
       shippingCountry: customer.shippingCountry ?? "",
+      creditDays: customer.creditDays != null ? String(customer.creditDays) : "0",
+      remindBeforeDays: customer.remindBeforeDays != null ? String(customer.remindBeforeDays) : "3",
       active: customer.active
     });
   }
@@ -127,6 +133,8 @@ export default function CustomersPage() {
       phone: form.phone || undefined,
       email: form.email || undefined,
       gstin: form.gstin || undefined,
+      creditDays: form.creditDays ? Number(form.creditDays) : undefined,
+      remindBeforeDays: form.remindBeforeDays ? Number(form.remindBeforeDays) : undefined,
       active: form.active,
       billingAddress: buildAddress(form, "billing"),
       shippingAddress: buildAddress(form, "shipping")
@@ -199,6 +207,22 @@ export default function CustomersPage() {
                 value={form.gstin}
                 onChange={(event) => setForm({ ...form, gstin: event.target.value })}
               />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Input
+                  label="Credit Days"
+                  type="number"
+                  min="0"
+                  value={form.creditDays}
+                  onChange={(event) => setForm({ ...form, creditDays: event.target.value })}
+                />
+                <Input
+                  label="Remind Before (days)"
+                  type="number"
+                  min="0"
+                  value={form.remindBeforeDays}
+                  onChange={(event) => setForm({ ...form, remindBeforeDays: event.target.value })}
+                />
+              </div>
 
               <div className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Billing Address</p>

@@ -16,7 +16,13 @@ import { ToastViewport } from "@/components/ToastViewport";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { useToast } from "@/lib/use-toast";
 
-type Customer = { id: string; code: string; name: string };
+type Customer = {
+  id: string;
+  code: string;
+  name: string;
+  creditDays?: number | null;
+  remindBeforeDays?: number | null;
+};
 
 type FinishedSku = { id: string; code: string; name: string; unit: string; manufacturingCost?: number | null };
 
@@ -44,9 +50,17 @@ type SalesOrder = {
   customer: Customer;
   customerId: string;
   orderDate: string;
+  creditDays?: number | null;
+  remindBeforeDays?: number | null;
   currency: string;
   notes?: string | null;
   lines: SalesOrderLine[];
+  payment?: {
+    totalBilled: number;
+    totalPaid: number;
+    outstanding: number;
+    status: "NOT_BILLED" | "UNPAID" | "PARTIALLY_PAID" | "PAID";
+  };
 };
 
 type Delivery = {
@@ -75,9 +89,25 @@ type Invoice = {
   deliveryId?: string | null;
   invoiceNumber?: string | null;
   invoiceDate: string;
+  dueDate?: string | null;
   status: string;
+  notes?: string | null;
+  totalAmount?: number | null;
+  balanceAmount?: number | null;
   lines: InvoiceLine[];
   delivery?: { packagingCost: number } | null;
+  payments?: Array<{
+    id: string;
+    amount: number;
+    payment: {
+      id: string;
+      paymentDate: string;
+      amount: number;
+      method?: string | null;
+      reference?: string | null;
+      notes?: string | null;
+    };
+  }>;
 };
 
 type AvailabilitySummary = {
@@ -210,6 +240,16 @@ function lineNetTotal(line: { quantity: number; unitPrice: number; discountPct?:
   return line.quantity * discounted * (1 + tax / 100);
 }
 
+function computeInvoiceTotals(invoice: Invoice) {
+  const total =
+    invoice.totalAmount ??
+    (invoice.lines.reduce((sum, line) => sum + lineNetTotal(line), 0) + (invoice.delivery?.packagingCost ?? 0));
+  const storedBalance = invoice.balanceAmount;
+  const balance =
+    storedBalance == null ? total : storedBalance === 0 && invoice.status === "ISSUED" ? total : storedBalance;
+  return { total, balance };
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -224,6 +264,8 @@ export default function SalesOrdersPage() {
   const [loading, setLoading] = useState(false);
 
   const [customerId, setCustomerId] = useState<string>("");
+  const [orderCreditDays, setOrderCreditDays] = useState("0");
+  const [orderRemindBeforeDays, setOrderRemindBeforeDays] = useState("3");
   const [notes, setNotes] = useState<string>("");
   const [orderDate, setOrderDate] = useState<string>("");
   const [lines, setLines] = useState<DraftLineForm[]>([]);
@@ -240,6 +282,23 @@ export default function SalesOrdersPage() {
   const [subcontractLines, setSubcontractLines] = useState<SubcontractLine[]>([]);
   const [deliveryLines, setDeliveryLines] = useState<DeliveryFormLine[]>([]);
   const [includePackagingInInvoice, setIncludePackagingInInvoice] = useState(true);
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentBoxExpanded, setPaymentBoxExpanded] = useState(true);
+  const [chargeAmount, setChargeAmount] = useState("");
+  const [chargeNotes, setChargeNotes] = useState("");
+  const [chargeSubmitting, setChargeSubmitting] = useState(false);
 
   const { toasts, push, remove } = useToast();
 
@@ -256,7 +315,11 @@ export default function SalesOrdersPage() {
       setSkus(skuData);
       setVendors(vendorData);
       setOrders(orderData);
-      if (!customerId && customerData[0]) setCustomerId(customerData[0].id);
+      if (!customerId && customerData[0]) {
+        setCustomerId(customerData[0].id);
+        setOrderCreditDays(String(customerData[0].creditDays ?? 0));
+        setOrderRemindBeforeDays(String(customerData[0].remindBeforeDays ?? 3));
+      }
     } catch (error: any) {
       push("error", error.message ?? "Failed to load sales orders");
     } finally {
@@ -313,6 +376,9 @@ export default function SalesOrdersPage() {
   function resetForm() {
     setNotes("");
     setOrderDate("");
+    const selectedCustomer = customers.find((customer) => customer.id === customerId);
+    setOrderCreditDays(String(selectedCustomer?.creditDays ?? 0));
+    setOrderRemindBeforeDays(String(selectedCustomer?.remindBeforeDays ?? 3));
     setLines([]);
   }
 
@@ -363,6 +429,8 @@ export default function SalesOrdersPage() {
       const created = await apiSend<SalesOrder>("/api/sales-orders", "POST", {
         customerId,
         orderDate: orderDate ? new Date(orderDate).toISOString() : undefined,
+        creditDays: Number(orderCreditDays || 0),
+        remindBeforeDays: Number(orderRemindBeforeDays || 0),
         notes,
         lines: payloadLines
       });
@@ -520,8 +588,56 @@ export default function SalesOrdersPage() {
     [deliveryLines]
   );
 
+  const unpaidInvoices = useMemo(() => {
+    if (!detail) return [];
+    return detail.invoices.filter((invoice) => {
+      const { balance } = computeInvoiceTotals(invoice);
+      return balance > 0;
+    });
+  }, [detail]);
+
+  const paymentInvoiceOptions = useMemo(() => {
+    return unpaidInvoices.map((invoice) => {
+      const { balance } = computeInvoiceTotals(invoice);
+      return {
+        value: invoice.id,
+        label: `${invoice.invoiceNumber ?? invoice.id} · Balance ${balance.toFixed(2)}`
+      };
+    });
+  }, [unpaidInvoices]);
+
+  useEffect(() => {
+    if (!detail) return;
+    if (!paymentInvoiceId || !unpaidInvoices.some((invoice) => invoice.id === paymentInvoiceId)) {
+      setPaymentInvoiceId(unpaidInvoices[0]?.id ?? "");
+    }
+  }, [detail, unpaidInvoices, paymentInvoiceId]);
+
+  const paymentRows = useMemo(() => {
+    if (!detail) return [];
+    return detail.invoices.flatMap((invoice) =>
+      (invoice.payments ?? []).map((allocation) => ({
+        id: allocation.id,
+        invoiceNumber: invoice.invoiceNumber ?? "—",
+        invoiceId: invoice.id,
+        paymentDate: allocation.payment.paymentDate,
+        amount: allocation.amount,
+        method: allocation.payment.method,
+        reference: allocation.payment.reference,
+        notes: allocation.payment.notes
+      }))
+    );
+  }, [detail]);
+
+  const isOrderFullyPaid = useMemo(
+    () => Boolean(detail && detail.invoices.length > 0 && unpaidInvoices.length === 0),
+    [detail, unpaidInvoices]
+  );
+
   const canPrintInvoice = useMemo(
-    () => deliveryLinesWithQty.length > 0 && deliveryLinesWithQty.every((line) => Boolean(line.deliveryDate)),
+    () =>
+      deliveryLinesWithQty.length > 0 &&
+      deliveryLinesWithQty.every((line) => Boolean(line.deliveryDate) && line.packagingCost.trim() !== ""),
     [deliveryLinesWithQty]
   );
 
@@ -549,6 +665,11 @@ export default function SalesOrdersPage() {
     });
   }, [detail]);
 
+  useEffect(() => {
+    if (!detail) return;
+    setPaymentBoxExpanded(!(detail.invoices.length > 0 && unpaidInvoices.length === 0));
+  }, [detail, unpaidInvoices.length]);
+
   async function updateStatus(order: SalesOrder, action: "confirm" | "production" | "dispatch") {
     if (action === "dispatch") {
       const totalProduced = order.lines.reduce((sum, line) => sum + (line.producedQty ?? 0), 0);
@@ -560,6 +681,10 @@ export default function SalesOrdersPage() {
     try {
       await apiSend(`/api/sales-orders/${order.id}/${action}`, "POST");
       push("success", "Order status updated");
+      if (action === "production") {
+        router.push(`/production?orderId=${order.id}`);
+        return;
+      }
       loadData();
       if (action === "dispatch") {
         setFocusSection("deliveries");
@@ -657,7 +782,7 @@ export default function SalesOrdersPage() {
         lineId: line.lineId,
         quantity: Number(line.qty),
         packagingCost: Number(line.packagingCost || 0),
-        deliveryDate: line.deliveryDate ? new Date(line.deliveryDate).toISOString() : undefined,
+        deliveryDate: new Date(line.deliveryDate).toISOString(),
         notes: line.notes || undefined
       }));
 
@@ -672,9 +797,11 @@ export default function SalesOrdersPage() {
       return;
     }
 
-    const missingCost = deliveryLinesWithQty.some((line) => line.packagingCost.trim() === "");
-    if (missingCost) {
-      push("error", "Enter delivery cost before posting the delivery");
+    const missingDetails = deliveryLinesWithQty.some(
+      (line) => line.packagingCost.trim() === "" || !line.deliveryDate
+    );
+    if (missingDetails) {
+      push("error", "Enter delivery date and delivery cost before posting the delivery");
       return;
     }
 
@@ -683,18 +810,18 @@ export default function SalesOrdersPage() {
         lines: payloadLines
       });
       push("success", "Delivery recorded");
-      if (autoInvoice) {
-        const newDeliveries = updated.deliveries.filter((delivery) => !existingDeliveryIds.has(delivery.id));
-        for (const delivery of newDeliveries) {
-          try {
-            const invoice = await apiSend<Invoice>(
-              `/api/sales-orders/${updated.id}/deliveries/${delivery.id}/invoice`,
-              "POST"
-            );
+      const newDeliveries = updated.deliveries.filter((delivery) => !existingDeliveryIds.has(delivery.id));
+      for (const delivery of newDeliveries) {
+        try {
+          const invoice = await apiSend<Invoice>(
+            `/api/sales-orders/${updated.id}/deliveries/${delivery.id}/invoice`,
+            "POST"
+          );
+          if (autoInvoice) {
             downloadInvoicePdf(invoice.id, includePackagingInInvoice);
-          } catch (error: any) {
-            push("error", error.message ?? "Failed to create invoice");
           }
+        } catch (error: any) {
+          push("error", error.message ?? "Failed to create invoice");
         }
       }
       openDetail(detail.id);
@@ -722,14 +849,91 @@ export default function SalesOrdersPage() {
     window.open(`/api/sales-orders/invoices/${invoiceId}/pdf?includePackaging=${param}`, "_blank");
   }
 
+  async function submitPayment() {
+    if (!detail) return;
+    if (!paymentInvoiceId) {
+      push("error", "Select an invoice to record payment");
+      return;
+    }
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      push("error", "Enter a valid payment amount");
+      return;
+    }
+
+    setPaymentSubmitting(true);
+    try {
+      await apiSend("/api/sales-payments", "POST", {
+        invoiceId: paymentInvoiceId,
+        amount,
+        paymentDate: paymentDate ? new Date(paymentDate).toISOString() : undefined,
+        method: paymentMethod || undefined,
+        reference: paymentReference || undefined,
+        notes: paymentNotes || undefined
+      });
+      push("success", "Payment recorded");
+      setPaymentAmount("");
+      setPaymentMethod("");
+      setPaymentReference("");
+      setPaymentNotes("");
+      openDetail(detail.id);
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to record payment");
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  }
+
+  async function submitAdditionalCharge() {
+    if (!detail) return;
+    const amount = Number(chargeAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      push("error", "Enter a valid additional charge amount");
+      return;
+    }
+
+    setChargeSubmitting(true);
+    try {
+      await apiSend<Invoice>(`/api/sales-orders/${detail.id}/charges`, "POST", {
+        amount,
+        invoiceDate: paymentDate ? new Date(paymentDate).toISOString() : undefined,
+        notes: chargeNotes || undefined
+      });
+      push("success", "Additional charge bill created");
+      setChargeAmount("");
+      setChargeNotes("");
+      openDetail(detail.id);
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to add additional charge");
+    } finally {
+      setChargeSubmitting(false);
+    }
+  }
+
   function buildOrderRows(source: SalesOrder[]) {
     return source.map((order) => {
       const badge = statusBadge[order.status] ?? { label: order.status, variant: "neutral" };
+      const billed = order.payment?.totalBilled ?? 0;
+      const paid = order.payment?.totalPaid ?? 0;
+      const outstanding = order.payment?.outstanding ?? 0;
+      const paymentStatus = order.payment?.status ?? "NOT_BILLED";
+      const paymentBadge =
+        paymentStatus === "PAID"
+          ? { label: "Paid", variant: "success" as const }
+          : paymentStatus === "PARTIALLY_PAID"
+            ? { label: "Partially Paid", variant: "warning" as const }
+            : paymentStatus === "UNPAID"
+              ? { label: "Unpaid", variant: "danger" as const }
+              : { label: "Not Billed", variant: "neutral" as const };
       return {
         so: order.soNumber ?? "—",
         customer: order.customer.name,
         value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
         status: <Badge {...badge} />,
+        payment: <Badge {...paymentBadge} />,
+        paid: `${paid.toFixed(2)} / ${billed.toFixed(2)}${outstanding > 0 ? ` (Bal ${outstanding.toFixed(2)})` : ""}`,
         date: formatDate(order.orderDate),
         actions: (
           <div className="flex flex-wrap gap-2">
@@ -797,6 +1001,8 @@ export default function SalesOrdersPage() {
       { key: "customer", label: "Customer" },
       { key: "value", label: "Value", align: "right" },
       { key: "status", label: "Status" },
+      { key: "payment", label: "Payment" },
+      { key: "paid", label: "Paid / Billed", align: "right" },
       { key: "date", label: "Date" },
       { key: "actions", label: "" }
     ];
@@ -843,7 +1049,13 @@ export default function SalesOrdersPage() {
               <Select
                 label="Customer"
                 value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
+                onChange={(event) => {
+                  const nextCustomerId = event.target.value;
+                  setCustomerId(nextCustomerId);
+                  const selected = customers.find((customer) => customer.id === nextCustomerId);
+                  setOrderCreditDays(String(selected?.creditDays ?? 0));
+                  setOrderRemindBeforeDays(String(selected?.remindBeforeDays ?? 3));
+                }}
                 options={customerOptions}
                 required
               />
@@ -853,6 +1065,22 @@ export default function SalesOrdersPage() {
                 value={orderDate}
                 onChange={(event) => setOrderDate(event.target.value)}
               />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Input
+                  label="Credit Days"
+                  type="number"
+                  min="0"
+                  value={orderCreditDays}
+                  onChange={(event) => setOrderCreditDays(event.target.value)}
+                />
+                <Input
+                  label="Remind Before (days)"
+                  type="number"
+                  min="0"
+                  value={orderRemindBeforeDays}
+                  onChange={(event) => setOrderRemindBeforeDays(event.target.value)}
+                />
+              </div>
               <Input
                 label="Notes"
                 value={notes}
@@ -1523,11 +1751,13 @@ export default function SalesOrdersPage() {
                     </label>
                     {!canPrintInvoice && deliveryLinesWithQty.length ? (
                       <p className="text-xs text-text-muted">
-                        Add a delivery date to enable invoice printing.
+                        Add delivery date and delivery cost to post delivery.
                       </p>
                     ) : null}
                     <div className="flex flex-wrap gap-3">
-                      <Button onClick={() => submitDeliveries()}>Post Delivery</Button>
+                      <Button onClick={() => submitDeliveries()} disabled={!canPrintInvoice}>
+                        Post Delivery
+                      </Button>
                       <Button
                         variant="secondary"
                         disabled={!canPrintInvoice}
@@ -1551,30 +1781,151 @@ export default function SalesOrdersPage() {
                   columns={[
                     { key: "invoice", label: "Invoice" },
                     { key: "date", label: "Date" },
+                    { key: "due", label: "Due" },
                     { key: "delivery", label: "Delivery" },
                     { key: "lines", label: "Lines", align: "right" },
+                    { key: "balance", label: "Balance", align: "right" },
                     { key: "packaging", label: "Packaging", align: "right" },
                     { key: "value", label: "Value", align: "right" },
+                    { key: "status", label: "Status" },
                     { key: "actions", label: "" }
                   ]}
-                  rows={detail.invoices.map((invoice) => ({
-                    invoice: invoice.invoiceNumber ?? "—",
-                    date: formatDate(invoice.invoiceDate),
-                    delivery: invoice.deliveryId ? "Delivery-linked" : "—",
-                    lines: invoice.lines.length,
-                    packaging: invoice.delivery?.packagingCost ? invoice.delivery.packagingCost.toFixed(2) : "—",
-                    value: (
-                      invoice.lines.reduce((sum, line) => sum + lineNetTotal(line), 0) +
-                      (invoice.delivery?.packagingCost ?? 0)
-                    ).toFixed(2),
-                    actions: (
-                      <Button variant="ghost" onClick={() => downloadInvoicePdf(invoice.id)}>
-                        Download PDF
-                      </Button>
-                    )
-                  }))}
+                  rows={detail.invoices.map((invoice) => {
+                    const { total, balance } = computeInvoiceTotals(invoice);
+                    return {
+                      invoice: invoice.invoiceNumber ?? "—",
+                      date: formatDate(invoice.invoiceDate),
+                      due: formatDate(invoice.dueDate),
+                      delivery: invoice.deliveryId ? "Delivery-linked" : "Additional charge",
+                      lines: invoice.lines.length,
+                      balance: balance.toFixed(2),
+                      packaging: invoice.delivery?.packagingCost ? invoice.delivery.packagingCost.toFixed(2) : "—",
+                      value: total.toFixed(2),
+                      status: invoice.status,
+                      actions: (
+                        <Button variant="ghost" onClick={() => downloadInvoicePdf(invoice.id)}>
+                          Download PDF
+                        </Button>
+                      )
+                    };
+                  })}
                   emptyLabel="No invoices yet."
                 />
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Payments</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <DataTable
+                  columns={[
+                    { key: "date", label: "Date" },
+                    { key: "invoice", label: "Invoice" },
+                    { key: "amount", label: "Amount", align: "right" },
+                    { key: "method", label: "Method" },
+                    { key: "reference", label: "Reference" },
+                    { key: "notes", label: "Notes" }
+                  ]}
+                  rows={paymentRows.map((row) => ({
+                    date: formatDate(row.paymentDate),
+                    invoice: row.invoiceNumber,
+                    amount: row.amount.toFixed(2),
+                    method: row.method ?? "—",
+                    reference: row.reference ?? "—",
+                    notes: row.notes ?? "—"
+                  }))}
+                  emptyLabel="No payments recorded yet."
+                />
+
+                <div className="mt-6 space-y-4">
+                  {isOrderFullyPaid && !paymentBoxExpanded ? (
+                    <button
+                      type="button"
+                      className="text-sm text-primary underline underline-offset-2"
+                      onClick={() => setPaymentBoxExpanded(true)}
+                    >
+                      Open to add more charges to this bill
+                    </button>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-text">Record Payment</p>
+                      {paymentInvoiceOptions.length ? (
+                        <div className="grid gap-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4 lg:grid-cols-2">
+                          <Select
+                            label="Invoice"
+                            value={paymentInvoiceId}
+                            onChange={(event) => setPaymentInvoiceId(event.target.value)}
+                            options={paymentInvoiceOptions}
+                          />
+                          <Input
+                            label="Amount"
+                            type="number"
+                            value={paymentAmount}
+                            onChange={(event) => setPaymentAmount(event.target.value)}
+                          />
+                          <Input
+                            label="Payment Date"
+                            type="date"
+                            value={paymentDate}
+                            onChange={(event) => setPaymentDate(event.target.value)}
+                          />
+                          <Input
+                            label="Method"
+                            value={paymentMethod}
+                            onChange={(event) => setPaymentMethod(event.target.value)}
+                          />
+                          <Input
+                            label="Reference"
+                            value={paymentReference}
+                            onChange={(event) => setPaymentReference(event.target.value)}
+                          />
+                          <Input
+                            label="Notes"
+                            value={paymentNotes}
+                            onChange={(event) => setPaymentNotes(event.target.value)}
+                          />
+                          <div className="flex items-end">
+                            <Button onClick={submitPayment} disabled={paymentSubmitting}>
+                              Record Payment
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                          <p className="text-xs text-text-muted">
+                            All invoices are fully paid. Add extra charges to create a new bill while keeping existing bills.
+                          </p>
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <Input
+                              label="Additional Charge Amount"
+                              type="number"
+                              value={chargeAmount}
+                              onChange={(event) => setChargeAmount(event.target.value)}
+                            />
+                            <Input
+                              label="Charge Date"
+                              type="date"
+                              value={paymentDate}
+                              onChange={(event) => setPaymentDate(event.target.value)}
+                            />
+                            <Input
+                              label="Notes"
+                              value={chargeNotes}
+                              onChange={(event) => setChargeNotes(event.target.value)}
+                            />
+                            <div className="flex items-end">
+                              <Button onClick={submitAdditionalCharge} disabled={chargeSubmitting}>
+                                Create Additional Charge Bill
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </CardBody>
             </Card>
           </div>

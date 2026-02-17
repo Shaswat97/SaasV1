@@ -1,6 +1,7 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+import { jsonError } from "@/lib/api-helpers";
 import { getTenantPrisma } from "@/lib/tenant-prisma";
-import { getDefaultCompanyId } from "@/lib/tenant";
+import { resolveAuthContext } from "@/lib/auth";
 import { getActorFromRequest } from "@/lib/activity";
 
 export type AdminContext = {
@@ -12,25 +13,83 @@ export type AdminContext = {
 
 export async function getAdminContext(
   request: Request,
-  db?: Prisma.TransactionClient | PrismaClient
+  db?: PrismaClient
 ): Promise<AdminContext> {
   const prisma = db ?? (await getTenantPrisma(request));
   if (!prisma) {
     throw new Error("Tenant not found");
   }
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
-
-  if (!actorEmployeeId) {
-    return { companyId, actorName, actorEmployeeId, isAdmin: false };
+  const auth = await resolveAuthContext(request, prisma);
+  if (!auth) {
+    return {
+      companyId: "",
+      actorName: "Anonymous",
+      actorEmployeeId: null,
+      isAdmin: false
+    };
   }
+  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  return {
+    companyId: auth.companyId,
+    actorName: actorName || auth.employeeName,
+    actorEmployeeId: auth.employeeId ?? actorEmployeeId,
+    isAdmin: auth.isAdmin
+  };
+}
 
-  const employee = await prisma.employee.findFirst({
-    where: { id: actorEmployeeId, companyId, deletedAt: null },
-    include: { roles: { include: { role: true } } }
-  });
+export type PermissionContext = {
+  companyId: string;
+  actorName: string;
+  actorEmployeeId: string;
+  permissions: string[];
+  isAdmin: boolean;
+};
 
-  const isAdmin = Boolean(employee?.roles?.some((role) => role.role.name === "ADMIN"));
+export async function getPermissionContext(
+  request: Request,
+  db?: PrismaClient
+): Promise<PermissionContext | null> {
+  const prisma = db ?? (await getTenantPrisma(request));
+  if (!prisma) {
+    throw new Error("Tenant not found");
+  }
+  const auth = await resolveAuthContext(request, prisma);
+  if (!auth) return null;
+  return {
+    companyId: auth.companyId,
+    actorName: auth.employeeName,
+    actorEmployeeId: auth.employeeId,
+    permissions: auth.permissions,
+    isAdmin: auth.isAdmin
+  };
+}
 
-  return { companyId, actorName, actorEmployeeId, isAdmin };
+export async function requirePermission(
+  request: Request,
+  permission: string,
+  db?: PrismaClient
+) {
+  const prisma = db ?? (await getTenantPrisma(request));
+  if (!prisma) return { error: jsonError("Tenant not found", 404), prisma: null, context: null };
+  const context = await getPermissionContext(request, prisma);
+  if (!context) return { error: jsonError("Authentication required", 401), prisma, context: null };
+  if (!context.isAdmin && !context.permissions.includes(permission)) {
+    return { error: jsonError("Forbidden", 403), prisma, context };
+  }
+  return { error: null, prisma, context };
+}
+
+export async function requireAnyPermission(
+  request: Request,
+  permissions: string[],
+  db?: PrismaClient
+) {
+  const prisma = db ?? (await getTenantPrisma(request));
+  if (!prisma) return { error: jsonError("Tenant not found", 404), prisma: null, context: null };
+  const context = await getPermissionContext(request, prisma);
+  if (!context) return { error: jsonError("Authentication required", 401), prisma, context: null };
+  if (!context.isAdmin && !permissions.some((permission) => context.permissions.includes(permission))) {
+    return { error: jsonError("Forbidden", 403), prisma, context };
+  }
+  return { error: null, prisma, context };
 }

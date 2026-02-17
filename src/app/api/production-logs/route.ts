@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       operator: true,
       supervisor: true,
       crewAssignments: { include: { employee: true } },
-      consumptions: { include: { rawSku: true } },
+      consumptions: { include: { rawSku: true, batch: true } },
       salesOrderLine: {
         include: {
           salesOrder: { include: { customer: true } },

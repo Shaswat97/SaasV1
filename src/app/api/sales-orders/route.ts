@@ -5,6 +5,7 @@ import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { buildProcurementPlan, computeAvailabilitySummary, reserveRawForSalesOrder } from "@/lib/sales-order";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,8 @@ const soSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
   soNumber: z.string().optional(),
   orderDate: z.string().datetime().optional(),
+  creditDays: z.number().int().min(0).optional(),
+  remindBeforeDays: z.number().int().min(0).optional(),
   currency: z.string().optional(),
   notes: z.string().optional(),
   lines: z.array(soLineSchema).min(1, "Add at least one line")
@@ -53,10 +56,12 @@ async function generateSoNumber(tx: Prisma.TransactionClient, companyId: string,
   return `${prefix}-${next}`;
 }
 
-export async function GET() {
-  const prisma = await getTenantPrisma();
+export async function GET(request: Request) {
+  const guard = await requirePermission(request, "sales.view");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
-  const companyId = await getDefaultCompanyId(prisma);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
 
   const orders = await prisma.salesOrder.findMany({
     where: { companyId, deletedAt: null },
@@ -64,16 +69,95 @@ export async function GET() {
       customer: true,
       lines: { include: { sku: true } },
       deliveries: true,
-      invoices: { include: { lines: true } }
+      invoices: { include: { lines: true, payments: true } }
     },
     orderBy: { createdAt: "desc" }
   });
 
-  return jsonOk(orders);
+  const normalizedOrders = await Promise.all(
+    orders.map(async (order) => {
+      if (order.status === "PRODUCTION") {
+        const allProduced = order.lines.every((line) => (line.producedQty ?? 0) >= line.quantity);
+        if (allProduced) {
+          return prisma.salesOrder.update({
+            where: { id: order.id },
+            data: { status: "DISPATCH" },
+            include: {
+              customer: true,
+              lines: { include: { sku: true } },
+              deliveries: true,
+              invoices: { include: { lines: true, payments: true } }
+            }
+          });
+        }
+      }
+      if (order.status !== "DISPATCH") return order;
+      const hasDeliveries = order.deliveries.length > 0;
+      const allDelivered = order.lines.every((line) => (line.deliveredQty ?? 0) >= line.quantity);
+      if (!hasDeliveries || !allDelivered) return order;
+      return prisma.salesOrder.update({
+        where: { id: order.id },
+        data: { status: "DELIVERED" },
+        include: {
+          customer: true,
+          lines: { include: { sku: true } },
+          deliveries: true,
+          invoices: { include: { lines: true, payments: true } }
+        }
+      });
+    })
+  );
+
+  const enriched = normalizedOrders.map((order) => {
+    const invoiceTotals = order.invoices.reduce(
+      (acc, invoice) => {
+        const linesTotal = invoice.lines.reduce((sum, line) => {
+          const discount = line.discountPct ?? 0;
+          const tax = line.taxPct ?? 0;
+          const discounted = line.unitPrice * (1 - discount / 100);
+          return sum + line.quantity * discounted * (1 + tax / 100);
+        }, 0);
+        const invoiceTotal = invoice.totalAmount > 0 ? invoice.totalAmount : linesTotal;
+        const paidAgainstInvoice = invoice.payments.reduce((sum, payment) => sum + payment.amount, 0);
+        const balance = invoice.balanceAmount > 0 || invoice.status === "PARTIALLY_PAID" || invoice.status === "UNPAID"
+          ? invoice.balanceAmount
+          : Math.max(invoiceTotal - paidAgainstInvoice, 0);
+        return {
+          total: acc.total + invoiceTotal,
+          paid: acc.paid + Math.min(paidAgainstInvoice, invoiceTotal),
+          outstanding: acc.outstanding + balance
+        };
+      },
+      { total: 0, paid: 0, outstanding: 0 }
+    );
+
+    const paymentStatus =
+      invoiceTotals.total <= 0
+        ? "NOT_BILLED"
+        : invoiceTotals.outstanding <= 0
+          ? "PAID"
+          : invoiceTotals.paid > 0
+            ? "PARTIALLY_PAID"
+            : "UNPAID";
+
+    return {
+      ...order,
+      payment: {
+        totalBilled: invoiceTotals.total,
+        totalPaid: invoiceTotals.paid,
+        outstanding: invoiceTotals.outstanding,
+        status: paymentStatus
+      }
+    };
+  });
+
+  return jsonOk(enriched);
 }
 
 export async function POST(request: Request) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "sales.create");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
@@ -86,8 +170,10 @@ export async function POST(request: Request) {
   const parsed = soSchema.safeParse(payload);
   if (!parsed.success) return zodError(parsed.error);
 
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
   const customer = await prisma.customer.findFirst({
     where: { id: parsed.data.customerId, companyId, deletedAt: null }
   });
@@ -118,6 +204,8 @@ export async function POST(request: Request) {
         soNumber: resolvedSoNumber,
         status: "QUOTE",
         orderDate: resolvedOrderDate,
+        creditDays: parsed.data.creditDays ?? customer.creditDays ?? 0,
+        remindBeforeDays: parsed.data.remindBeforeDays ?? customer.remindBeforeDays ?? 3,
         currency: parsed.data.currency ?? "INR",
         notes: parsed.data.notes,
         lines: {

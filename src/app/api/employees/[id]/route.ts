@@ -3,13 +3,17 @@ import { employeeSchema } from "@/lib/validation";
 import { jsonError, jsonOk, zodError } from "@/lib/api-helpers";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { getActorFromRequest, recordActivity } from "@/lib/activity";
+import { hashPin } from "@/lib/auth";
+import { requirePermission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const prisma = await getTenantPrisma();
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const guard = await requirePermission(request, "users.manage_employees");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
-  const companyId = await getDefaultCompanyId(prisma);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
   const employee = await prisma.employee.findFirst({
     where: { id: params.id, companyId, deletedAt: null },
     include: { roles: { include: { role: true } } }
@@ -21,7 +25,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "users.manage_employees");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
   let payload: unknown;
 
@@ -38,8 +44,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return jsonError("At least one role is required", 400);
   }
 
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
 
   const existing = await prisma.employee.findFirst({
     where: { id: params.id, companyId, deletedAt: null }
@@ -56,20 +64,23 @@ export async function PUT(request: Request, { params }: { params: { id: string }
           name: parsed.data.name,
           phone: parsed.data.phone,
           email: parsed.data.email,
+          pinHash: parsed.data.pin ? hashPin(parsed.data.pin) : undefined,
+          pinUpdatedAt: parsed.data.pin ? new Date() : undefined,
           active: parsed.data.active
         }
       });
 
       if (parsed.data.roles) {
+        const roleNames = parsed.data.roles.map((role) => role.trim().toUpperCase());
         const roles = await tx.role.findMany({
           where: {
             companyId,
-            name: { in: parsed.data.roles },
+            name: { in: roleNames },
             deletedAt: null
           }
         });
 
-        if (roles.length !== parsed.data.roles.length) {
+        if (roles.length !== roleNames.length) {
           throw new Error("ROLE_INVALID");
         }
 
@@ -113,10 +124,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const prisma = await getTenantPrisma();
+  const guard = await requirePermission(request, "users.manage_employees");
+  if (guard.error) return guard.error;
+  const prisma = guard.prisma;
   if (!prisma) return jsonError("Tenant not found", 404);
-  const companyId = await getDefaultCompanyId(prisma);
-  const { actorName, actorEmployeeId } = getActorFromRequest(request);
+  const companyId = guard.context?.companyId ?? (await getDefaultCompanyId(prisma));
+  const { actorName, actorEmployeeId } = guard.context
+    ? { actorName: guard.context.actorName, actorEmployeeId: guard.context.actorEmployeeId }
+    : getActorFromRequest(request);
 
   const employee = await prisma.employee.findFirst({
     where: { id: params.id, companyId, deletedAt: null }

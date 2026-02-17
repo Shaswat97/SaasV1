@@ -14,6 +14,7 @@ export async function POST(request: Request) {
   try {
     await prisma.$transaction(async (tx) => {
       await tx.activityLog.deleteMany({ where: { companyId } });
+      await tx.appSession.deleteMany({ where: { companyId } });
       await tx.productionLogCrew.deleteMany({ where: { companyId } });
       await tx.productionLogAudit.deleteMany({ where: { companyId } });
       await tx.productionLogConsumption.deleteMany({ where: { companyId } });
@@ -22,6 +23,13 @@ export async function POST(request: Request) {
       await tx.salesInvoiceLine.deleteMany({ where: { invoice: { companyId } } });
       await tx.salesInvoice.deleteMany({ where: { companyId } });
       await tx.salesOrderDelivery.deleteMany({ where: { companyId } });
+      await tx.salesPaymentAllocation.deleteMany({ where: { companyId } });
+      await tx.salesPayment.deleteMany({ where: { companyId } });
+
+      await tx.vendorPaymentAllocation.deleteMany({ where: { companyId } });
+      await tx.vendorPayment.deleteMany({ where: { companyId } });
+      await tx.vendorBillLine.deleteMany({ where: { bill: { companyId } } });
+      await tx.vendorBill.deleteMany({ where: { companyId } });
 
       await tx.purchaseOrderAllocation.deleteMany({
         where: {

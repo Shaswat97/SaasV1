@@ -81,6 +81,68 @@ npm run dev
 
 4. Open `http://localhost:3000` in your browser.
 
+## Release Workflow (Local -> Safe -> Staging -> Main)
+
+Use this fixed sequence for every feature release:
+
+1. Local validation (Mac):
+
+```bash
+git checkout staging
+npm run dev
+```
+
+2. Commit tested local changes (Mac):
+
+```bash
+git add .
+git commit -m "your feature message"
+```
+
+3. Create immutable Safe checkpoint tag (Mac):
+
+```bash
+npm run release:safe
+# Optional custom tag:
+# npm run release:safe -- safe-2026-02-16-01
+```
+
+4. Push staging branch (Mac):
+
+```bash
+npm run release:staging
+```
+
+5. Deploy staging server (VPS SSH):
+
+```bash
+ssh root@<staging-vps-ip>
+cd /var/www/presentrag-staging
+bash scripts/deploy-staging.sh
+```
+
+6. Test on `staging.technosynergians.com` (staging DB only).
+
+7. Promote tested staging to main (Mac):
+
+```bash
+npm run release:main
+```
+
+8. Deploy production server (VPS SSH):
+
+```bash
+ssh root@<prod-vps-ip>
+cd /var/www/presentrag
+bash scripts/deploy-prod.sh
+```
+
+Rules:
+
+- Never commit directly to `main`.
+- `main` is updated only from tested `staging`.
+- Safe tags are rollback checkpoints.
+
 ## Seeding Current Data (Snapshot)
 
 - Current seed data is stored in `prisma/seed-data.json`.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ALL_PERMISSION_KEYS } from "@/lib/rbac";
 
 const addressSchema = z.object({
   line1: z.string().min(1, "Address line 1 is required"),
@@ -11,16 +12,54 @@ const addressSchema = z.object({
 
 const optionalAddressSchema = addressSchema.partial();
 
-export const roleNameSchema = z.enum(["ADMIN"]);
+export const roleNameSchema = z
+  .string()
+  .trim()
+  .min(2, "Role name is required")
+  .max(50, "Role name is too long")
+  .regex(/^[A-Z][A-Z0-9_]*$/, "Role name must be UPPER_CASE");
+
+export const rolePermissionsSchema = z
+  .array(z.string())
+  .min(1, "Select at least one permission")
+  .superRefine((permissions, context) => {
+    const valid = new Set(ALL_PERMISSION_KEYS);
+    permissions.forEach((permission, index) => {
+      if (!valid.has(permission)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Invalid permission",
+          path: [index]
+        });
+      }
+    });
+  });
 
 export const companySchema = z.object({
   name: z.string().min(1, "Company name is required"),
   gstin: z.string().optional(),
+  pan: z.string().optional(),
+  cin: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email("Invalid email").optional(),
+  website: z.string().url("Invalid website URL").optional(),
   rawValuationMethod: z.string().optional(),
   finishedValuationMethod: z.string().optional(),
   wipValuationMethod: z.string().optional(),
+  printHeaderLine1: z.string().optional(),
+  printHeaderLine2: z.string().optional(),
+  printTerms: z.string().optional(),
+  printFooterNote: z.string().optional(),
+  printPreparedByLabel: z.string().optional(),
+  printAuthorizedByLabel: z.string().optional(),
+  bankAccountName: z.string().optional(),
+  bankAccountNumber: z.string().optional(),
+  bankIfsc: z.string().optional(),
+  bankName: z.string().optional(),
+  bankBranch: z.string().optional(),
+  bankUpiId: z.string().optional(),
+  printShowTaxBreakup: z.boolean().optional(),
+  printShowCompanyGstin: z.boolean().optional(),
   billingAddress: optionalAddressSchema.optional(),
   shippingAddress: optionalAddressSchema.optional()
 });
@@ -30,6 +69,7 @@ export const employeeSchema = z.object({
   name: z.string().min(1, "Employee name is required"),
   phone: z.string().optional(),
   email: z.string().email("Invalid email").optional(),
+  pin: z.string().regex(/^\d{4,8}$/, "PIN must be 4 to 8 digits").optional(),
   active: z.boolean().optional(),
   roles: z.array(roleNameSchema).min(1, "At least one role is required")
 });
@@ -37,10 +77,12 @@ export const employeeSchema = z.object({
 export const vendorSchema = z.object({
   code: z.string().min(1, "Vendor code is required"),
   name: z.string().min(1, "Vendor name is required"),
-  vendorType: z.enum(["RAW", "SUBCONTRACT"]).optional(),
+  vendorType: z.enum(["RAW", "SUBCONTRACT", "SCRAP"]).optional(),
   phone: z.string().optional(),
   email: z.string().email("Invalid email").optional(),
   gstin: z.string().optional(),
+  creditDays: z.number().int().min(0).optional(),
+  remindBeforeDays: z.number().int().min(0).optional(),
   active: z.boolean().optional(),
   billingAddress: optionalAddressSchema.optional(),
   shippingAddress: optionalAddressSchema.optional()
@@ -52,6 +94,8 @@ export const customerSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email("Invalid email").optional(),
   gstin: z.string().optional(),
+  creditDays: z.number().int().min(0).optional(),
+  remindBeforeDays: z.number().int().min(0).optional(),
   active: z.boolean().optional(),
   billingAddress: optionalAddressSchema.optional(),
   shippingAddress: optionalAddressSchema.optional()

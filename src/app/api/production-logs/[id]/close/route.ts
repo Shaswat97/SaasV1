@@ -17,7 +17,9 @@ const closeSchema = z.object({
     .array(
       z.object({
         rawSkuId: z.string().min(1),
-        quantity: z.number().min(0)
+        batchId: z.string().optional(),
+        quantity: z.number().min(0),
+        bomQty: z.number().min(0).optional()
       })
     )
     .optional(),
@@ -58,6 +60,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   if (log.status !== "OPEN") return jsonError("Only open logs can be closed", 400);
 
   const totalQty = data.goodQty + data.rejectQty + data.scrapQty;
+  if (data.goodQty <= 0) return jsonError("Good quantity must be greater than 0", 400);
   if (totalQty <= 0) return jsonError("Total output must be greater than 0", 400);
 
   try {
@@ -77,6 +80,25 @@ export async function POST(request: Request, { params }: { params: { id: string 
       });
 
       const wipCost = wipBalance?.costPerUnit ?? 0;
+      const wipQtyOnHand = wipBalance?.quantityOnHand ?? 0;
+      if (totalQty > wipQtyOnHand) {
+        const topUpQty = totalQty - wipQtyOnHand;
+        await recordStockMovement(
+          {
+            companyId,
+            skuId: log.finishedSkuId,
+            zoneId: wipZone.id,
+            quantity: topUpQty,
+            direction: "IN",
+            movementType: "ADJUSTMENT",
+            costPerUnit: wipCost,
+            referenceType: "PROD_LOG",
+            referenceId: log.id,
+            notes: "WIP top-up for extra reject/scrap output"
+          },
+          tx
+        );
+      }
 
       await recordStockMovement(
         {
@@ -133,7 +155,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       const cumulativeGood = (log.goodQty ?? 0) + data.goodQty;
       const cumulativeReject = (log.rejectQty ?? 0) + data.rejectQty;
       const cumulativeScrap = (log.scrapQty ?? 0) + data.scrapQty;
-      const remainingAfter = Math.max(log.plannedQty - (cumulativeGood + cumulativeReject + cumulativeScrap), 0);
+      const remainingAfter = Math.max(log.plannedQty - cumulativeGood, 0);
       const oeePct = log.plannedQty > 0 ? (cumulativeGood / log.plannedQty) * 100 : null;
 
       const closeMoment = data.closeAt ? new Date(data.closeAt) : new Date();
@@ -157,14 +179,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
         }
       }
 
-      if (remainingAfter === 0) {
-        const openCrew = crewRows.filter((row) => !row.endAt);
-        for (const row of openCrew) {
-          await tx.productionLogCrew.update({
-            where: { id: row.id },
-            data: { endAt: closeMoment }
-          });
-        }
+      const openCrew = crewRows.filter((row) => !row.endAt);
+      for (const row of openCrew) {
+        await tx.productionLogCrew.update({
+          where: { id: row.id },
+          data: { endAt: closeMoment }
+        });
       }
 
       if (log.salesOrderLineId) {
@@ -178,9 +198,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
 
       if (data.rawConsumptions?.length) {
-        const rawSkuIdSet = new Set(data.rawConsumptions.map((entry) => entry.rawSkuId));
-        if (rawSkuIdSet.size !== data.rawConsumptions.length) {
-          throw new Error("Duplicate raw SKUs are not allowed in raw consumption");
+        const consumptionKeySet = new Set(
+          data.rawConsumptions.map((entry) => `${entry.rawSkuId}:${entry.batchId ?? "NO_BATCH"}`)
+        );
+        if (consumptionKeySet.size !== data.rawConsumptions.length) {
+          throw new Error("Duplicate raw SKU batch rows are not allowed in raw consumption");
         }
         const rawSkuIds = data.rawConsumptions.map((entry) => entry.rawSkuId);
         const rawSkus = await tx.sku.findMany({
@@ -193,13 +215,78 @@ export async function POST(request: Request, { params }: { params: { id: string 
           throw new Error("Raw consumption must reference RAW SKUs");
         }
 
+        const previousConsumptions = await tx.productionLogConsumption.findMany({
+          where: { logId: log.id }
+        });
+
+        const batchIds = Array.from(
+          new Set(data.rawConsumptions.map((entry) => entry.batchId).filter(Boolean) as string[])
+        );
+        const batchRows = batchIds.length
+          ? await tx.rawMaterialBatch.findMany({
+              where: { id: { in: batchIds }, companyId }
+            })
+          : [];
+        const batchMap = new Map(batchRows.map((row) => [row.id, row]));
+        if (batchRows.length !== batchIds.length) {
+          throw new Error("One or more selected batches are invalid");
+        }
+
+        data.rawConsumptions.forEach((entry) => {
+          if (!entry.batchId) return;
+          const batch = batchMap.get(entry.batchId);
+          if (!batch || batch.skuId !== entry.rawSkuId) {
+            throw new Error("Selected batch does not belong to the selected raw SKU");
+          }
+        });
+
+        const hasUnbatchedInput = data.rawConsumptions.some((entry) => !entry.batchId);
+        if (!hasUnbatchedInput) {
+          const prevByBatch = new Map<string, number>();
+          previousConsumptions.forEach((entry) => {
+            if (!entry.batchId) return;
+            prevByBatch.set(entry.batchId, (prevByBatch.get(entry.batchId) ?? 0) + entry.quantity);
+          });
+          const nextByBatch = new Map<string, number>();
+          data.rawConsumptions.forEach((entry) => {
+            if (!entry.batchId) return;
+            nextByBatch.set(entry.batchId, (nextByBatch.get(entry.batchId) ?? 0) + entry.quantity);
+          });
+          const affectedBatchIds = new Set<string>([...prevByBatch.keys(), ...nextByBatch.keys()]);
+          for (const batchId of affectedBatchIds) {
+            const prevQty = prevByBatch.get(batchId) ?? 0;
+            const nextQty = nextByBatch.get(batchId) ?? 0;
+            const delta = nextQty - prevQty;
+            if (Math.abs(delta) < 0.0001) continue;
+            const batch = batchMap.get(batchId) ?? (await tx.rawMaterialBatch.findUnique({ where: { id: batchId } }));
+            if (!batch) throw new Error("Batch not found");
+            if (delta > 0) {
+              if (batch.quantityRemaining < delta) {
+                throw new Error(`Insufficient quantity in batch ${batch.batchNumber}`);
+              }
+              await tx.rawMaterialBatch.update({
+                where: { id: batchId },
+                data: { quantityRemaining: { decrement: delta } }
+              });
+            } else {
+              await tx.rawMaterialBatch.update({
+                where: { id: batchId },
+                data: { quantityRemaining: { increment: Math.abs(delta) } }
+              });
+            }
+          }
+        }
+
         await tx.productionLogConsumption.deleteMany({ where: { logId: log.id } });
         await tx.productionLogConsumption.createMany({
           data: data.rawConsumptions.map((entry) => ({
             companyId,
             logId: log.id,
             rawSkuId: entry.rawSkuId,
-            quantity: entry.quantity
+            batchId: entry.batchId ?? null,
+            quantity: entry.quantity,
+            bomQty: entry.bomQty ?? null,
+            costPerUnit: entry.batchId ? (batchMap.get(entry.batchId)?.costPerUnit ?? null) : null
           }))
         });
       }
@@ -243,7 +330,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         const actualMap = new Map<string, number>();
         if (data.rawConsumptions?.length) {
           data.rawConsumptions.forEach((entry) => {
-            actualMap.set(entry.rawSkuId, entry.quantity);
+            actualMap.set(entry.rawSkuId, (actualMap.get(entry.rawSkuId) ?? 0) + entry.quantity);
           });
         } else {
           issuedMap.forEach((entry, skuId) => {
@@ -252,6 +339,23 @@ export async function POST(request: Request, { params }: { params: { id: string 
         }
 
         actualRawQty = Array.from(actualMap.values()).reduce((sum, qty) => sum + qty, 0);
+        if (data.rawConsumptions?.length) {
+          const batchIds = Array.from(
+            new Set(data.rawConsumptions.map((entry) => entry.batchId).filter(Boolean) as string[])
+          );
+          const batchRows = batchIds.length
+            ? await tx.rawMaterialBatch.findMany({ where: { id: { in: batchIds }, companyId } })
+            : [];
+          const batchCostMap = new Map(batchRows.map((row) => [row.id, row.costPerUnit]));
+          actualRawCost = data.rawConsumptions.reduce((sum, entry) => {
+            if (entry.batchId) {
+              return sum + entry.quantity * (batchCostMap.get(entry.batchId) ?? 0);
+            }
+            const issued = issuedMap.get(entry.rawSkuId);
+            const issuedCpu = issued && issued.qty > 0 ? issued.costTotal / issued.qty : 0;
+            return sum + entry.quantity * issuedCpu;
+          }, 0);
+        }
 
         let adjustmentCostDelta = 0;
         if (data.rawConsumptions?.length) {
@@ -309,7 +413,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
         const scale = log.plannedQty > 0 ? cumulativeGood / log.plannedQty : 0;
         expectedRawQty = issuedTotals.qty * scale;
         expectedRawCost = issuedTotals.cost * scale;
-        actualRawCost = issuedTotals.cost + adjustmentCostDelta;
+        if (actualRawCost == null) {
+          actualRawCost = issuedTotals.cost + adjustmentCostDelta;
+        }
         materialVarianceCost = expectedRawCost > 0 ? actualRawCost - expectedRawCost : null;
         materialVariancePct =
           expectedRawCost && expectedRawCost > 0
@@ -322,8 +428,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
       const updated = await tx.productionLog.update({
         where: { id: log.id },
         data: {
-          status: remainingAfter === 0 ? "CLOSED" : "OPEN",
-          closeAt: remainingAfter === 0 ? closeMoment : null,
+          status: "CLOSED",
+          closeAt: closeMoment,
           goodQty: cumulativeGood,
           rejectQty: cumulativeReject,
           scrapQty: cumulativeScrap,

@@ -5,12 +5,22 @@ import { usePathname } from "next/navigation";
 import { navItems } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
-export function SidebarNav() {
+type SidebarNavProps = {
+  permissions: string[];
+  isAdmin: boolean;
+};
+
+export function SidebarNav({ permissions, isAdmin }: SidebarNavProps) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter((item) => {
+    if (!item.permission) return true;
+    if (isAdmin) return true;
+    return permissions.includes(item.permission);
+  });
 
   return (
     <nav className="flex flex-col gap-2">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const isActive = pathname === item.href;
         return (
           <Link

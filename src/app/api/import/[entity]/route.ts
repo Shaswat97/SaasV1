@@ -130,7 +130,7 @@ export async function POST(request: Request, { params }: { params: { entity: str
 
   const { companyId, actorName, actorEmployeeId, isAdmin } = await getAdminContext(request);
   if (!isAdmin) {
-    return jsonError("Admin role required. Select an Admin in Active User.", 403);
+    return jsonError("Admin permission required.", 403);
   }
 
   const errors: ImportError[] = [];
@@ -166,8 +166,12 @@ export async function POST(request: Request, { params }: { params: { entity: str
           errors.push({ row: index + 2, field: "code", message: "Duplicate code (already exists)." });
           continue;
         }
-        if (!["RAW", "SUBCONTRACT"].includes(vendorType)) {
-          errors.push({ row: index + 2, field: "vendorType", message: "Vendor type must be RAW or SUBCONTRACT." });
+        if (!["RAW", "SUBCONTRACT", "SCRAP"].includes(vendorType)) {
+          errors.push({
+            row: index + 2,
+            field: "vendorType",
+            message: "Vendor type must be RAW, SUBCONTRACT, or SCRAP."
+          });
           continue;
         }
 

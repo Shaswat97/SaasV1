@@ -48,13 +48,17 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-8">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 py-8"
+      onClick={onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         ref={panelRef}
         className={cn("panel-strong w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6", className)}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">{title}</h2>

@@ -32,6 +32,8 @@ type Vendor = {
   shippingState?: string | null;
   shippingPostalCode?: string | null;
   shippingCountry?: string | null;
+  creditDays?: number | null;
+  remindBeforeDays?: number | null;
   active: boolean;
   _count?: { vendorSkus: number };
 };
@@ -71,6 +73,8 @@ const emptyForm = {
   shippingState: "",
   shippingPostalCode: "",
   shippingCountry: "",
+  creditDays: "0",
+  remindBeforeDays: "3",
   active: true
 };
 
@@ -126,6 +130,14 @@ export default function VendorsPage() {
     }
 
     const vendorType = form.vendorType || vendors.find((vendor) => vendor.id === editingId)?.vendorType || "RAW";
+    if (vendorType === "SCRAP") {
+      setVendorSkus([]);
+      setSkuCatalog([]);
+      setLinkSkuId("");
+      setLinkPrice("");
+      setPriceEdits({});
+      return;
+    }
 
     async function loadVendorLinks() {
       try {
@@ -172,6 +184,8 @@ export default function VendorsPage() {
       shippingState: vendor.shippingState ?? "",
       shippingPostalCode: vendor.shippingPostalCode ?? "",
       shippingCountry: vendor.shippingCountry ?? "",
+      creditDays: vendor.creditDays != null ? String(vendor.creditDays) : "0",
+      remindBeforeDays: vendor.remindBeforeDays != null ? String(vendor.remindBeforeDays) : "3",
       vendorType: vendor.vendorType ?? "RAW",
       active: vendor.active
     });
@@ -184,6 +198,11 @@ export default function VendorsPage() {
 
   async function handleLinkSku() {
     if (!editingId) return;
+    const vendorType = form.vendorType || "RAW";
+    if (vendorType === "SCRAP") {
+      push("error", "Scrap buyers do not require SKU linking.");
+      return;
+    }
     if (!linkSkuId) {
       push("error", "Select a SKU to link");
       return;
@@ -197,7 +216,6 @@ export default function VendorsPage() {
       push("success", "Vendor SKU linked");
       setLinkPrice("");
       await loadVendors();
-      const vendorType = form.vendorType || "RAW";
       const [links, skuData] = await Promise.all([
         apiGet<VendorSku[]>(`/api/vendor-skus?vendorId=${editingId}`),
         apiGet<Sku[]>(vendorType === "SUBCONTRACT" ? "/api/finished-skus" : "/api/raw-skus")
@@ -270,6 +288,8 @@ export default function VendorsPage() {
       phone: form.phone || undefined,
       email: form.email || undefined,
       gstin: form.gstin || undefined,
+      creditDays: form.creditDays ? Number(form.creditDays) : undefined,
+      remindBeforeDays: form.remindBeforeDays ? Number(form.remindBeforeDays) : undefined,
       active: form.active,
       billingAddress: buildAddress(form, "billing"),
       shippingAddress: buildAddress(form, "shipping")
@@ -304,7 +324,7 @@ export default function VendorsPage() {
       <ToastViewport toasts={toasts} onDismiss={remove} />
       <SectionHeader
         title="Vendors"
-        subtitle="Raw-material suppliers with compliance and address tracking."
+        subtitle="Raw suppliers, subcontractors, and scrap buyers."
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1.8fr]">
@@ -316,8 +336,11 @@ export default function VendorsPage() {
             <CardBody>
               {editingId ? (
                 <p className="mb-4 text-xs uppercase tracking-[0.2em] text-text-muted">
-                  Linked {form.vendorType === "SUBCONTRACT" ? "Finished" : "Raw"} SKUs:{" "}
-                  {vendors.find((vendor) => vendor.id === editingId)?._count?.vendorSkus ?? 0}
+                  {form.vendorType === "SCRAP"
+                    ? "SKU linking not applicable for scrap buyers."
+                    : `Linked ${form.vendorType === "SUBCONTRACT" ? "Finished" : "Raw"} SKUs: ${
+                        vendors.find((vendor) => vendor.id === editingId)?._count?.vendorSkus ?? 0
+                      }`}
                 </p>
               ) : null}
               <form className="space-y-4" onSubmit={handleSubmit}>
@@ -341,7 +364,8 @@ export default function VendorsPage() {
                   onChange={(event) => setForm({ ...form, vendorType: event.target.value })}
                   options={[
                     { value: "RAW", label: "Raw Supplier" },
-                    { value: "SUBCONTRACT", label: "Subcontractor" }
+                    { value: "SUBCONTRACT", label: "Subcontractor" },
+                    { value: "SCRAP", label: "Scrap Buyer" }
                   ]}
                 />
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -362,6 +386,22 @@ export default function VendorsPage() {
                   value={form.gstin}
                   onChange={(event) => setForm({ ...form, gstin: event.target.value })}
                 />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Input
+                    label="Credit Days"
+                    type="number"
+                    min="0"
+                    value={form.creditDays}
+                    onChange={(event) => setForm({ ...form, creditDays: event.target.value })}
+                  />
+                  <Input
+                    label="Remind Before (days)"
+                    type="number"
+                    min="0"
+                    value={form.remindBeforeDays}
+                    onChange={(event) => setForm({ ...form, remindBeforeDays: event.target.value })}
+                  />
+                </div>
 
                 <div className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
                   <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Billing Address</p>
@@ -456,7 +496,7 @@ export default function VendorsPage() {
             </CardBody>
           </Card>
 
-          {editingId ? (
+          {editingId && form.vendorType !== "SCRAP" ? (
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -558,14 +598,19 @@ export default function VendorsPage() {
                   { key: "code", label: "Code" },
                   { key: "name", label: "Vendor" },
                   { key: "type", label: "Type" },
-                  { key: "skus", label: "Linked Raw SKUs", align: "right" },
+                  { key: "skus", label: "Linked SKUs", align: "right" },
                   { key: "status", label: "Status" },
                   { key: "actions", label: "" }
                 ]}
                 rows={filtered.map((vendor) => ({
                   code: vendor.code,
                   name: vendor.name,
-                  type: vendor.vendorType === "SUBCONTRACT" ? "Subcontractor" : "Raw Supplier",
+                  type:
+                    vendor.vendorType === "SUBCONTRACT"
+                      ? "Subcontractor"
+                      : vendor.vendorType === "SCRAP"
+                        ? "Scrap Buyer"
+                        : "Raw Supplier",
                   skus: vendor._count?.vendorSkus ?? 0,
                   status: vendor.active ? "Active" : "Inactive",
                   actions: (

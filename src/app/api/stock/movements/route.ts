@@ -12,7 +12,7 @@ const movementSchema = z.object({
   zoneId: z.string().min(1, "Zone is required"),
   quantity: z.number().positive("Quantity must be greater than 0"),
   direction: z.enum(["IN", "OUT"]),
-  movementType: z.enum(["RECEIPT", "ISSUE", "TRANSFER", "ADJUSTMENT", "PRODUCE"]),
+  movementType: z.enum(["RECEIPT", "ISSUE", "TRANSFER", "ADJUSTMENT", "PRODUCE", "SCRAP_SALE"]),
   costPerUnit: z.number().nonnegative().optional(),
   referenceType: z.string().optional(),
   referenceId: z.string().optional(),

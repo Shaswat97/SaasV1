@@ -67,6 +67,9 @@ export async function POST(request: Request) {
   if ((vendor.vendorType ?? "RAW") === "SUBCONTRACT" && sku.type !== "FINISHED") {
     return jsonError("Subcontract vendors can only be linked to finished SKUs", 400);
   }
+  if ((vendor.vendorType ?? "RAW") === "SCRAP") {
+    return jsonError("Scrap buyers are not linked to procurement SKUs", 400);
+  }
 
   const mapping = await prisma.vendorSku.upsert({
     where: { vendorId_skuId: { vendorId: vendor.id, skuId: sku.id } },

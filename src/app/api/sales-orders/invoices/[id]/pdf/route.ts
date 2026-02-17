@@ -1,6 +1,7 @@
 import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { jsonError } from "@/lib/api-helpers";
+import { esc, formatDate, formatMoney, renderDocumentShell } from "@/lib/print-template";
 
 export const dynamic = "force-dynamic";
 
@@ -32,43 +33,24 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return sum + line.quantity * discounted * (1 + tax / 100);
   }, 0);
   const packagingCost = includePackaging ? invoice.delivery?.packagingCost ?? 0 : 0;
+  const subtotal = invoice.lines.reduce((sum, line) => {
+    const discount = line.discountPct ?? 0;
+    const discounted = line.unitPrice * (1 - discount / 100);
+    return sum + line.quantity * discounted;
+  }, 0);
+  const taxTotal = linesTotal - subtotal;
   const total = linesTotal + packagingCost;
 
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Invoice ${invoice.invoiceNumber ?? invoice.id}</title>
-  <style>
-    body { font-family: Arial, sans-serif; color: #1f1b2d; padding: 32px; }
-    h1 { margin-bottom: 4px; }
-    .muted { color: #6b637d; }
-    .section { margin-top: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; }
-    th { background: #f4f1fb; }
-    .total { font-weight: bold; text-align: right; }
-  </style>
-</head>
-<body>
-  <h1>Invoice ${invoice.invoiceNumber ?? invoice.id}</h1>
-  <div class="muted">Date: ${new Date(invoice.invoiceDate).toLocaleDateString("en-IN")}</div>
-  <div class="section">
-    <h3>Customer</h3>
-    <div>${invoice.salesOrder.customer.name}</div>
-    <div class="muted">Order: ${invoice.salesOrder.soNumber ?? "—"}</div>
-  </div>
-  <div class="section">
-    <h3>Items</h3>
+  const bodyHtml = `
     <table>
       <thead>
         <tr>
           <th>SKU</th>
           <th>Qty</th>
-          <th>Unit Price</th>
-          <th>Discount %</th>
-          <th>Tax %</th>
-          <th>Line Total</th>
+          <th class="num">Unit Price</th>
+          <th class="num">Discount %</th>
+          ${(invoice.company.printShowTaxBreakup ?? true) ? '<th class="num">Tax %</th>' : ""}
+          <th class="num">Line Total</th>
         </tr>
       </thead>
       <tbody>
@@ -79,22 +61,47 @@ export async function GET(request: Request, { params }: { params: { id: string }
             const discounted = line.unitPrice * (1 - discount / 100);
             const lineTotal = line.quantity * discounted * (1 + tax / 100);
             return `<tr>
-              <td>${line.sku.code} · ${line.sku.name}</td>
-              <td>${line.quantity}</td>
-              <td>${line.unitPrice.toFixed(2)}</td>
-              <td>${discount.toFixed(2)}</td>
-              <td>${tax.toFixed(2)}</td>
-              <td>${lineTotal.toFixed(2)}</td>
+              <td>${esc(`${line.sku.code} · ${line.sku.name}`)}</td>
+              <td>${esc(`${line.quantity} ${line.sku.unit}`)}</td>
+              <td class="num">${esc(formatMoney(line.unitPrice))}</td>
+              <td class="num">${esc(discount.toFixed(2))}</td>
+              ${(invoice.company.printShowTaxBreakup ?? true) ? `<td class="num">${esc(tax.toFixed(2))}</td>` : ""}
+              <td class="num">${esc(formatMoney(lineTotal))}</td>
             </tr>`;
           })
           .join("")}
       </tbody>
     </table>
-    ${packagingCost ? `<div class="section"><strong>Packaging/Logistics Cost:</strong> ${packagingCost.toFixed(2)}</div>` : ""}
-    <div class="total">Total: ${total.toFixed(2)}</div>
-  </div>
-</body>
-</html>`;
+  `;
+
+  const totalsHtml = `
+    <table class="totals">
+      <tbody>
+        <tr><td>Sub Total</td><td class="num">${esc(formatMoney(subtotal))}</td></tr>
+        ${(invoice.company.printShowTaxBreakup ?? true) ? `<tr><td>Total Tax</td><td class="num">${esc(formatMoney(taxTotal))}</td></tr>` : ""}
+        ${packagingCost > 0 ? `<tr><td>Packaging / Logistics</td><td class="num">${esc(formatMoney(packagingCost))}</td></tr>` : ""}
+        <tr><td><strong>Grand Total</strong></td><td class="num"><strong>${esc(formatMoney(total))}</strong></td></tr>
+      </tbody>
+    </table>
+  `;
+
+  const partyBlock = `
+    <strong>Bill To</strong>
+    <div class="meta">${esc(invoice.salesOrder.customer.name)}</div>
+    <div class="meta">Sales Order: ${esc(invoice.salesOrder.soNumber ?? "—")}</div>
+    ${invoice.dueDate ? `<div class="meta">Payment Due: ${esc(formatDate(invoice.dueDate))}</div>` : ""}
+  `;
+
+  const html = renderDocumentShell({
+    title: "Tax Invoice",
+    docNumber: invoice.invoiceNumber ?? invoice.id,
+    docDate: formatDate(invoice.invoiceDate),
+    dueDate: invoice.dueDate ? formatDate(invoice.dueDate) : undefined,
+    company: invoice.company,
+    partyBlock,
+    bodyHtml,
+    totalsHtml
+  });
 
   return new Response(html, {
     headers: {

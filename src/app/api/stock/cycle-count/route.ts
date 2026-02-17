@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const { companyId, actorName, actorEmployeeId, isAdmin } = await getAdminContext(request);
   if (!isAdmin) {
-    return jsonError("Admin role required. Select an Admin in Active User.", 403);
+    return jsonError("Admin permission required.", 403);
   }
 
   const balance = await prisma.stockBalance.findUnique({

@@ -1,6 +1,7 @@
 import { getTenantPrisma } from "@/lib/tenant-prisma";
 import { getDefaultCompanyId } from "@/lib/tenant";
 import { jsonError } from "@/lib/api-helpers";
+import { esc, formatDate, formatMoney, renderDocumentShell } from "@/lib/print-template";
 
 export const dynamic = "force-dynamic";
 
@@ -24,60 +25,53 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 
   const total = receipt.lines.reduce((sum, line) => sum + line.totalCost, 0);
-
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Goods Receipt ${receipt.id}</title>
-  <style>
-    body { font-family: Arial, sans-serif; color: #1f1b2d; padding: 32px; }
-    h1 { margin-bottom: 4px; }
-    .muted { color: #6b637d; }
-    .section { margin-top: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; }
-    th { background: #f4f1fb; }
-    .total { font-weight: bold; text-align: right; }
-  </style>
-</head>
-<body>
-  <h1>Goods Receipt</h1>
-  <div class="muted">Receipt ID: ${receipt.id}</div>
-  <div class="muted">Date: ${new Date(receipt.receivedAt).toLocaleDateString("en-IN")}</div>
-  <div class="section">
-    <h3>Vendor</h3>
-    <div>${receipt.vendor.name}</div>
-    <div class="muted">PO: ${receipt.purchaseOrder.poNumber ?? receipt.purchaseOrderId}</div>
-  </div>
-  <div class="section">
-    <h3>Items</h3>
+  const bodyHtml = `
     <table>
       <thead>
         <tr>
           <th>SKU</th>
           <th>Qty</th>
-          <th>Unit Cost</th>
-          <th>Line Total</th>
+          <th class="num">Unit Cost</th>
+          <th class="num">Line Total</th>
         </tr>
       </thead>
       <tbody>
         ${receipt.lines
-          .map((line) => {
-            return `<tr>
-              <td>${line.sku.code} · ${line.sku.name}</td>
-              <td>${line.quantity} ${line.sku.unit}</td>
-              <td>${line.costPerUnit.toFixed(2)}</td>
-              <td>${line.totalCost.toFixed(2)}</td>
-            </tr>`;
-          })
+          .map((line) => `<tr>
+            <td>${esc(`${line.sku.code} · ${line.sku.name}`)}</td>
+            <td>${esc(`${line.quantity} ${line.sku.unit}`)}</td>
+            <td class="num">${esc(formatMoney(line.costPerUnit))}</td>
+            <td class="num">${esc(formatMoney(line.totalCost))}</td>
+          </tr>`)
           .join("")}
       </tbody>
     </table>
-    <div class="total">Total: ${total.toFixed(2)}</div>
-  </div>
-</body>
-</html>`;
+  `;
+
+  const totalsHtml = `
+    <table class="totals">
+      <tbody>
+        <tr><td><strong>Total Receipt Value</strong></td><td class="num"><strong>${esc(formatMoney(total))}</strong></td></tr>
+      </tbody>
+    </table>
+  `;
+
+  const partyBlock = `
+    <strong>Vendor</strong>
+    <div class="meta">${esc(receipt.vendor.name)}</div>
+    <div class="meta">PO Number: ${esc(receipt.purchaseOrder.poNumber ?? receipt.purchaseOrderId)}</div>
+    <div class="meta">Receipt ID: ${esc(receipt.id)}</div>
+  `;
+
+  const html = renderDocumentShell({
+    title: "Goods Receipt",
+    docNumber: receipt.id,
+    docDate: formatDate(receipt.receivedAt),
+    company: receipt.company,
+    partyBlock,
+    bodyHtml,
+    totalsHtml
+  });
 
   return new Response(html, {
     headers: {
