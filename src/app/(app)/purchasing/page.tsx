@@ -100,6 +100,8 @@ type PageState = {
   received: number;
   deleted: number;
   consolidated: number;
+  poTab: string;
+  billTab: string;
 };
 
 const statusBadge: Record<string, { label: string; variant: "neutral" | "info" | "success" | "warning" | "danger" }> = {
@@ -231,7 +233,9 @@ export default function PurchasingPage() {
     approved: 1,
     received: 1,
     deleted: 1,
-    consolidated: 1
+    consolidated: 1,
+    poTab: "drafts",
+    billTab: "all"
   });
 
   const { toasts, push, remove } = useToast();
@@ -289,7 +293,7 @@ export default function PurchasingPage() {
   }, [vendorId]);
 
   useEffect(() => {
-    setPages({ draft: 1, pending: 1, approved: 1, received: 1, deleted: 1, consolidated: 1 });
+    setPages({ draft: 1, pending: 1, approved: 1, received: 1, deleted: 1, consolidated: 1, poTab: "drafts", billTab: "all" });
   }, [search, vendorFilter, completedStart, completedEnd, orders.length]);
 
   function resetForm() {
@@ -813,7 +817,7 @@ export default function PurchasingPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_1.8fr]">
+      <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
         <Card>
           <CardHeader>
             <CardTitle>{editingId ? "Edit Purchase Order" : "Create Manual PO"}</CardTitle>
@@ -853,7 +857,7 @@ export default function PurchasingPage() {
                       key={`${line.skuId}-${index}`}
                       className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4"
                     >
-                      <div className="grid gap-3 lg:grid-cols-2">
+                      <div className="grid gap-3">
                         <Select
                           label="Raw SKU"
                           value={line.skuId}
@@ -876,51 +880,53 @@ export default function PurchasingPage() {
                             vendorSkuMap.has(line.skuId)
                               ? skuOptions
                               : (() => {
-                                  const fallback = rawSkus.find((sku) => sku.id === line.skuId);
-                                  if (!fallback) return skuOptions;
-                                  return [
-                                    { value: fallback.id, label: `UNLINKED · ${fallback.code} · ${fallback.name}` },
-                                    ...skuOptions
-                                  ];
-                                })()
+                                const fallback = rawSkus.find((sku) => sku.id === line.skuId);
+                                if (!fallback) return skuOptions;
+                                return [
+                                  { value: fallback.id, label: `UNLINKED · ${fallback.code} · ${fallback.name}` },
+                                  ...skuOptions
+                                ];
+                              })()
                           }
                           hint={vendorSkus.length ? "Only linked SKUs are shown." : "Link SKUs to this vendor first."}
                         />
-                        <Input
-                          label="Quantity"
-                          value={line.quantity}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
-                            );
-                          }}
-                          type="number"
-                          required
-                        />
-                        <Input
-                          label="Unit Price"
-                          value={line.unitPrice}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, unitPrice: value } : item))
-                            );
-                          }}
-                          type="number"
-                          required
-                          hint={(() => {
-                            const mapping = vendorSkuMap.get(line.skuId);
-                            if (!mapping || mapping.lastPrice == null) return "No vendor price on record.";
-                            const current = Number(line.unitPrice);
-                            const diff = Number.isFinite(current) && current > 0 ? current - mapping.lastPrice : null;
-                            const diffLabel =
-                              diff == null
-                                ? ""
-                                : ` · Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(2).replace(/\\.00$/, "")}`;
-                            return `Vendor last price: ₹${mapping.lastPrice.toFixed(2).replace(/\\.00$/, "")}${diffLabel}`;
-                          })()}
-                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            label="Quantity"
+                            value={line.quantity}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, quantity: value } : item))
+                              );
+                            }}
+                            type="number"
+                            required
+                          />
+                          <Input
+                            label="Unit Price"
+                            value={line.unitPrice}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, unitPrice: value } : item))
+                              );
+                            }}
+                            type="number"
+                            required
+                            hint={(() => {
+                              const mapping = vendorSkuMap.get(line.skuId);
+                              if (!mapping || mapping.lastPrice == null) return "No vendor price on record.";
+                              const current = Number(line.unitPrice);
+                              const diff = Number.isFinite(current) && current > 0 ? current - mapping.lastPrice : null;
+                              const diffLabel =
+                                diff == null
+                                  ? ""
+                                  : ` · Δ ${diff >= 0 ? "+" : ""}${diff.toFixed(2).replace(/\.00$/, "")}`;
+                              return `Vendor last price: ₹${mapping.lastPrice.toFixed(2).replace(/\.00$/, "")}${diffLabel}`;
+                            })()}
+                          />
+                        </div>
                         <Input
                           label="Expected Date"
                           value={line.expectedDate}
@@ -933,36 +939,37 @@ export default function PurchasingPage() {
                           type="date"
                           hint={
                             vendorLeadTime
-                              ? `Last lead time: ${vendorLeadTime.days} day${vendorLeadTime.days === 1 ? "" : "s"} (PO ${
-                                  vendorLeadTime.poNumber ?? "—"
-                                } · ${new Date(vendorLeadTime.orderDate).toLocaleDateString("en-IN")} → ${new Date(
-                                  vendorLeadTime.receivedAt
-                                ).toLocaleDateString("en-IN")})`
+                              ? `Last lead time: ${vendorLeadTime.days} day${vendorLeadTime.days === 1 ? "" : "s"} (PO ${vendorLeadTime.poNumber ?? "—"
+                              } · ${new Date(vendorLeadTime.orderDate).toLocaleDateString("en-IN")} → ${new Date(
+                                vendorLeadTime.receivedAt
+                              ).toLocaleDateString("en-IN")})`
                               : "No receipt history yet."
                           }
                         />
-                        <Input
-                          label="Discount %"
-                          value={line.discountPct}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, discountPct: value } : item))
-                            );
-                          }}
-                          type="number"
-                        />
-                        <Input
-                          label="Tax %"
-                          value={line.taxPct}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setLines((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, taxPct: value } : item))
-                            );
-                          }}
-                          type="number"
-                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            label="Discount %"
+                            value={line.discountPct}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, discountPct: value } : item))
+                              );
+                            }}
+                            type="number"
+                          />
+                          <Input
+                            label="Tax %"
+                            value={line.taxPct}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setLines((prev) =>
+                                prev.map((item, idx) => (idx === index ? { ...item, taxPct: value } : item))
+                              );
+                            }}
+                            type="number"
+                          />
+                        </div>
                         <Select
                           label="QC Status"
                           value={line.qcStatus}
@@ -1058,349 +1065,281 @@ export default function PurchasingPage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Purchase Orders</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <Tabs
-                items={[
-                  {
-                    label: `Drafts (${filteredDraft.length})`,
-                    value: "drafts",
-                    content: (
-                      <>
-                        <DataTable
-                          columns={[
-                            { key: "po", label: "PO" },
-                            { key: "vendor", label: "Vendor" },
-                            { key: "type", label: "Type" },
-                            { key: "items", label: "Line Items" },
-                            { key: "lines", label: "Lines", align: "right" },
-                            { key: "status", label: "Status" },
-                            { key: "actions", label: "" }
-                          ]}
-                          rows={pagedDraft.items.map((order) => ({
-                            po: order.poNumber ?? "—",
-                            vendor: order.vendor.name,
-                            type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
-                            items: order.lines.length ? (
-                              <div className="space-y-1 text-xs text-text-muted">
-                                {order.lines.map((line) => (
-                                  <div key={line.id} className="flex items-center justify-between gap-3">
-                                    <span className="text-text">{line.sku.code} · {line.sku.name}</span>
-                                    <span>{line.quantity} {line.sku.unit}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              "—"
-                            ),
-                            lines: order.lines.length,
-                            status: <Badge {...statusBadge[order.status]} />,
-                            actions: (
-                              <div className="flex gap-2">
-                                {order.type !== "SUBCONTRACT" ? (
-                                  <Button variant="ghost" onClick={() => handleEdit(order)}>
-                                    Edit
-                                  </Button>
-                                ) : null}
-                                <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                  Delete
-                                </Button>
-                                <Button variant="ghost" onClick={() => confirmOrder(order.id)}>
-                                  Confirm
-                                </Button>
-                              </div>
-                            )
-                          }))}
-                          emptyLabel={loading ? "Loading drafts..." : "No draft POs."}
-                        />
-                        <Pagination
-                          page={pagedDraft.page}
-                          totalPages={pagedDraft.totalPages}
-                          onChange={(page) => setPages((prev) => ({ ...prev, draft: page }))}
-                        />
-                      </>
-                    )
-                  },
-                  {
-                    label: `Pending (${filteredPending.length})`,
-                    value: "pending",
-                    content: (
-                      <>
-                        <DataTable
-                          columns={[
-                            { key: "po", label: "PO" },
-                            { key: "vendor", label: "Vendor" },
-                            { key: "type", label: "Type" },
-                            { key: "value", label: "Value", align: "right" },
-                            { key: "status", label: "Status" },
-                            { key: "actions", label: "" }
-                          ]}
-                          rows={pagedPending.items.map((order) => ({
-                            po: order.poNumber ?? "—",
-                            vendor: order.vendor.name,
-                            type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
-                            value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
-                            status: <Badge {...statusBadge[order.status]} />,
-                            actions: (
-                              <div className="flex gap-2">
-                                <Button variant="ghost" onClick={() => approveOrder(order.id)}>
-                                  Approve
-                                </Button>
-                                <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                  Delete
-                                </Button>
-                              </div>
-                            )
-                          }))}
-                          emptyLabel={loading ? "Loading pending POs..." : "No pending POs."}
-                        />
-                        <Pagination
-                          page={pagedPending.page}
-                          totalPages={pagedPending.totalPages}
-                          onChange={(page) => setPages((prev) => ({ ...prev, pending: page }))}
-                        />
-                      </>
-                    )
-                  },
-                  {
-                    label: `Approved (${filteredApproved.length})`,
-                    value: "approved",
-                    content: (
-                      <>
-                        <DataTable
-                          columns={[
-                            { key: "po", label: "PO" },
-                            { key: "vendor", label: "Vendor" },
-                            { key: "type", label: "Type" },
-                            { key: "open", label: "Open Lines", align: "right" },
-                            { key: "inwardQty", label: "Inwarded Qty" },
-                            { key: "status", label: "Status" },
-                            { key: "actions", label: "" }
-                          ]}
-                          rows={pagedApproved.items.map((order) => ({
-                            po: order.poNumber ?? "—",
-                            vendor: order.vendor.name,
-                            type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
-                            open: order.lines.filter((line) => line.receivedQty < line.quantity).length,
-                            pendingQty: (() => {
-                              const pending = order.lines
-                                .filter((line) => line.receivedQty < line.quantity)
-                                .map((line) => ({
-                                  label: `${line.sku.code} · ${line.sku.name}`,
-                                  qty: `${(line.quantity - line.receivedQty).toFixed(2).replace(/\.00$/, "")} ${line.sku.unit}`
-                                }));
-                              if (!pending.length) return "—";
-                              return (
-                                <div className="space-y-1 text-xs text-text-muted">
-                                  {pending.map((line) => (
-                                    <div key={line.label} className="flex items-center justify-between gap-3">
-                                      <span className="text-text">{line.label}</span>
-                                      <span>{line.qty}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })(),
-                            status: (() => {
-                              const hasPartial = order.lines.some(
-                                (line) => line.receivedQty > 0 && line.receivedQty < line.quantity
-                              );
-                              return (
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Badge {...statusBadge[order.status]} />
-                                  {hasPartial ? <Badge variant="warning" label="Partial" /> : null}
-                                </div>
-                              );
-                            })(),
-                            actions: (
-                              <div className="flex gap-2">
-                                <Button variant="ghost" onClick={() => openReceive(order)}>
-                                  Receive
-                                </Button>
-                                <Button variant="ghost" onClick={() => closeOrder(order)}>
-                                  Close
-                                </Button>
-                                <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                  Delete
-                                </Button>
-                              </div>
-                            )
-                          }))}
-                          emptyLabel={loading ? "Loading approved POs..." : "No approved POs."}
-                        />
-                        <Pagination
-                          page={pagedApproved.page}
-                          totalPages={pagedApproved.totalPages}
-                          onChange={(page) => setPages((prev) => ({ ...prev, approved: page }))}
-                        />
-                      </>
-                    )
-                  },
-                  {
-                    label: `Completed (${filteredReceived.length})`,
-                    value: "completed",
-                    content: (
-                      <>
-                        <DataTable
-                          columns={[
-                            { key: "po", label: "PO" },
-                            { key: "vendor", label: "Vendor" },
-                            { key: "type", label: "Type" },
-                            { key: "orderDate", label: "Order Date" },
-                            { key: "receivedDate", label: "Received Date" },
-                            { key: "pendingQty", label: "Pending Qty" },
-                            { key: "items", label: "Items" },
-                            { key: "lines", label: "Lines", align: "right" },
-                            { key: "value", label: "Value", align: "right" },
-                            { key: "status", label: "Status" },
-                            { key: "receipt", label: "" }
-                          ]}
-                          rows={pagedReceived.items.map((order) => ({
-                            po: order.poNumber ?? "—",
-                            vendor: order.vendor.name,
-                            type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
-                            orderDate: order.orderDate ? new Date(order.orderDate).toLocaleDateString("en-IN") : "—",
-                            receivedDate: latestReceiptDate(order)
-                              ? new Date(latestReceiptDate(order) as string).toLocaleDateString("en-IN")
-                              : order.closedAt
-                                ? new Date(order.closedAt).toLocaleDateString("en-IN")
-                                : "—",
-                            inwardQty: (() => {
-                              const inward = order.lines
-                                .filter((line) => line.receivedQty > 0)
-                                .map((line) => ({
-                                  label: `${line.sku.code} · ${line.sku.name}`,
-                                  qty: `${line.receivedQty.toFixed(2).replace(/\\.00$/, "")} ${line.sku.unit}`
-                                }));
-                              if (!inward.length) return "—";
-                              return (
-                                <div className="space-y-1 text-xs text-text-muted">
-                                  {inward.map((line) => (
-                                    <div key={line.label} className="flex items-center justify-between gap-3">
-                                      <span className="text-text">{line.label}</span>
-                                      <span>{line.qty}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })(),
-                            items: order.lines.length ? (
-                              <div className="space-y-1 text-xs text-text-muted">
-                                {order.lines.map((line) => (
-                                  <div key={line.id} className="flex items-center justify-between gap-3">
-                                    <span className="text-text">{line.sku.code} · {line.sku.name}</span>
-                                    <span>₹{line.unitPrice.toFixed(2).replace(/\\.00$/, "")}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              "—"
-                            ),
-                            lines: order.lines.length,
-                            value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
-                            status: <Badge {...statusBadge[order.status]} />,
-                            receipt: latestReceipt(order)?.id ? (
-                              <Button variant="ghost" onClick={() => downloadReceipt(latestReceipt(order)!.id)}>
-                                Receipt
-                              </Button>
-                            ) : (
-                              "—"
-                            )
-                          }))}
-                          emptyLabel={loading ? "Loading completed POs..." : "No completed POs in this range."}
-                        />
-                        <Pagination
-                          page={pagedReceived.page}
-                          totalPages={pagedReceived.totalPages}
-                          onChange={(page) => setPages((prev) => ({ ...prev, received: page }))}
-                        />
-                      </>
-                    )
-                  },
-                  {
-                    label: `Deleted (${filteredDeleted.length})`,
-                    value: "deleted",
-                    content: (
-                      <>
-                        <DataTable
-                          columns={[
-                            { key: "po", label: "PO" },
-                            { key: "vendor", label: "Vendor" },
-                            { key: "type", label: "Type" },
-                            { key: "deletedAt", label: "Deleted On" },
-                            { key: "items", label: "Items" },
-                            { key: "value", label: "Value", align: "right" },
-                            { key: "status", label: "Status" }
-                          ]}
-                          rows={pagedDeleted.items.map((order) => ({
-                            po: order.poNumber ?? "—",
-                            vendor: order.vendor.name,
-                            type: order.type === "SUBCONTRACT" ? "Subcontract" : "Raw",
-                            deletedAt: order.deletedAt ? new Date(order.deletedAt).toLocaleDateString("en-IN") : "—",
-                            items: order.lines.length ? (
-                              <div className="space-y-1 text-xs text-text-muted">
-                                {order.lines.map((line) => (
-                                  <div key={line.id} className="flex items-center justify-between gap-3">
-                                    <span className="text-text">
-                                      {line.sku.code} · {line.sku.name}
-                                    </span>
-                                    <span>
-                                      {line.quantity.toFixed(2).replace(/\\.00$/, "")} {line.sku.unit} · ₹
-                                      {line.unitPrice.toFixed(2).replace(/\\.00$/, "")}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              "—"
-                            ),
-                            value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
-                            status: <Badge variant="danger" label="Deleted" />
-                          }))}
-                          emptyLabel={loading ? "Loading deleted POs..." : "No deleted POs."}
-                        />
-                        <Pagination
-                          page={pagedDeleted.page}
-                          totalPages={pagedDeleted.totalPages}
-                          onChange={(page) => setPages((prev) => ({ ...prev, deleted: page }))}
-                        />
-                      </>
-                    )
-                  }
-                ]}
-              />
-            </CardBody>
-          </Card>
+            <div className="px-6 pt-5 pb-0">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-1">
+                  {[
+                    { key: "drafts", label: "Drafts", count: filteredDraft.length },
+                    { key: "pending", label: "Pending", count: filteredPending.length },
+                    { key: "approved", label: "Approved", count: filteredApproved.length },
+                    { key: "completed", label: "Completed", count: filteredReceived.length },
+                    { key: "deleted", label: "Deleted", count: filteredDeleted.length },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setPages((prev) => ({ ...prev, poTab: tab.key }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${pages.poTab === tab.key
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-500 hover:bg-gray-100"
+                        }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search POs..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-3 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent w-48"
+                  />
+                </div>
+              </div>
+            </div>
 
-          <Card variant="strong">
-            <CardHeader>
-              <CardTitle>Consolidated Vendor Drafts</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <DataTable
-                columns={[
-                  { key: "vendor", label: "Vendor" },
-                  { key: "po", label: "Draft PO" },
-                  { key: "lines", label: "Lines", align: "right" },
-                  { key: "value", label: "Value", align: "right" }
-                ]}
-                rows={pagedConsolidated.items.map((group) => ({
-                  vendor: group.vendor.name,
-                  po: group.orders[0]?.poNumber ?? "—",
-                  lines: group.orders.reduce((sum, order) => sum + order.lines.length, 0),
-                  value: group.orders
-                    .reduce((sum, order) => sum + order.lines.reduce((lineSum, line) => lineSum + lineNetTotal(line), 0), 0)
-                    .toFixed(2)
-                }))}
-                emptyLabel={loading ? "Loading drafts..." : "No vendor drafts found."}
-              />
-              <Pagination
-                page={pagedConsolidated.page}
-                totalPages={pagedConsolidated.totalPages}
-                onChange={(page) => setPages((prev) => ({ ...prev, consolidated: page }))}
-              />
+            <CardBody className="pt-3">
+              <div className="max-h-[600px] overflow-y-auto">
+                {pages.poTab === "drafts" && (
+                  <DataTable
+                    columns={[
+                      { key: "po", label: "PO" },
+                      { key: "vendor", label: "Vendor" },
+                      { key: "type", label: "Type" },
+                      { key: "items", label: "Line Items" },
+                      { key: "lines", label: "Lines", align: "right" as const },
+                      { key: "status", label: "Status" },
+                      { key: "actions", label: "" }
+                    ]}
+                    rows={filteredDraft.map((order) => ({
+                      po: <span className="font-semibold text-accent">{order.poNumber ?? "—"}</span>,
+                      vendor: order.vendor.name,
+                      type: (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.type === "SUBCONTRACT" ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}>{order.type === "SUBCONTRACT" ? "Subcontract" : "Raw"}</span>
+                      ),
+                      items: order.lines.length ? (
+                        <div className="space-y-1 text-xs text-text-muted">
+                          {order.lines.map((line) => (
+                            <div key={line.id} className="flex items-center justify-between gap-3">
+                              <span className="text-text">{line.sku.code} · {line.sku.name}</span>
+                              <span className="font-medium">{line.quantity} {line.sku.unit}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <span className="text-gray-300">—</span>,
+                      lines: <span className="font-medium">{order.lines.length}</span>,
+                      status: (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+                          Draft
+                        </span>
+                      ),
+                      actions: (
+                        <div className="flex gap-1">
+                          {order.type !== "SUBCONTRACT" && (
+                            <button onClick={() => handleEdit(order)} className="px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors border border-gray-200">Edit</button>
+                          )}
+                          <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          <button onClick={() => confirmOrder(order.id)} className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-xs font-medium text-green-700 hover:text-green-800 transition-colors border border-green-200">Confirm</button>
+                        </div>
+                      )
+                    }))}
+                    emptyLabel={loading ? "Loading drafts..." : "No draft POs."}
+                  />
+                )}
+
+                {pages.poTab === "pending" && (
+                  <DataTable
+                    columns={[
+                      { key: "po", label: "PO" },
+                      { key: "vendor", label: "Vendor" },
+                      { key: "type", label: "Type" },
+                      { key: "value", label: "Value", align: "right" as const },
+                      { key: "status", label: "Status" },
+                      { key: "actions", label: "" }
+                    ]}
+                    rows={filteredPending.map((order) => ({
+                      po: <span className="font-semibold text-accent">{order.poNumber ?? "—"}</span>,
+                      vendor: order.vendor.name,
+                      type: (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.type === "SUBCONTRACT" ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}>{order.type === "SUBCONTRACT" ? "Subcontract" : "Raw"}</span>
+                      ),
+                      value: <span className="font-medium">₹{order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>,
+                      status: (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                          Pending
+                        </span>
+                      ),
+                      actions: (
+                        <div className="flex gap-1">
+                          <button onClick={() => approveOrder(order.id)} className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-xs font-medium text-green-700 hover:text-green-800 transition-colors border border-green-200">Approve</button>
+                          <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                        </div>
+                      )
+                    }))}
+                    emptyLabel={loading ? "Loading pending POs..." : "No pending POs."}
+                  />
+                )}
+
+                {pages.poTab === "approved" && (
+                  <DataTable
+                    columns={[
+                      { key: "po", label: "PO" },
+                      { key: "vendor", label: "Vendor" },
+                      { key: "type", label: "Type" },
+                      { key: "open", label: "Open Lines", align: "right" as const },
+                      { key: "inwardQty", label: "Inwarded Qty" },
+                      { key: "status", label: "Status" },
+                      { key: "actions", label: "" }
+                    ]}
+                    rows={filteredApproved.map((order) => {
+                      const hasPartial = order.lines.some((line) => line.receivedQty > 0 && line.receivedQty < line.quantity);
+                      return {
+                        po: <span className="font-semibold text-accent">{order.poNumber ?? "—"}</span>,
+                        vendor: order.vendor.name,
+                        type: (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.type === "SUBCONTRACT" ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-blue-50 text-blue-700 border border-blue-200"
+                            }`}>{order.type === "SUBCONTRACT" ? "Subcontract" : "Raw"}</span>
+                        ),
+                        open: (
+                          <span className={`font-medium ${order.lines.filter((l) => l.receivedQty < l.quantity).length > 0 ? "text-orange-600" : "text-green-600"}`}>
+                            {order.lines.filter((line) => line.receivedQty < line.quantity).length}
+                          </span>
+                        ),
+                        inwardQty: (() => {
+                          const pending = order.lines
+                            .filter((line) => line.receivedQty < line.quantity)
+                            .map((line) => ({
+                              label: `${line.sku.code} · ${line.sku.name}`,
+                              qty: `${(line.quantity - line.receivedQty).toFixed(2).replace(/\.00$/, "")} ${line.sku.unit}`
+                            }));
+                          if (!pending.length) return <span className="text-green-600 text-xs font-medium">Complete</span>;
+                          return (
+                            <div className="space-y-1 text-xs text-text-muted">
+                              {pending.map((line) => (
+                                <div key={line.label} className="flex items-center justify-between gap-3">
+                                  <span className="text-text">{line.label}</span>
+                                  <span className="text-orange-600 font-medium">{line.qty}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })(),
+                        status: (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              Approved
+                            </span>
+                            {hasPartial && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
+                                Partial
+                              </span>
+                            )}
+                          </div>
+                        ),
+                        actions: (
+                          <div className="flex gap-1">
+                            <button onClick={() => openReceive(order)} className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-xs font-medium text-blue-700 hover:text-blue-800 transition-colors border border-blue-200">Receive</button>
+                            <button onClick={() => closeOrder(order)} className="px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors border border-gray-200">Close</button>
+                            <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          </div>
+                        )
+                      };
+                    })}
+                    emptyLabel={loading ? "Loading approved POs..." : "No approved POs."}
+                  />
+                )}
+
+                {pages.poTab === "completed" && (
+                  <DataTable
+                    columns={[
+                      { key: "po", label: "PO" },
+                      { key: "vendor", label: "Vendor" },
+                      { key: "type", label: "Type" },
+                      { key: "orderDate", label: "Order Date" },
+                      { key: "receivedDate", label: "Received Date" },
+                      { key: "lines", label: "Lines", align: "right" as const },
+                      { key: "value", label: "Value", align: "right" as const },
+                      { key: "status", label: "Status" },
+                      { key: "receipt", label: "" }
+                    ]}
+                    rows={filteredReceived.map((order) => ({
+                      po: <span className="font-semibold text-accent">{order.poNumber ?? "—"}</span>,
+                      vendor: order.vendor.name,
+                      type: (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.type === "SUBCONTRACT" ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}>{order.type === "SUBCONTRACT" ? "Subcontract" : "Raw"}</span>
+                      ),
+                      orderDate: order.orderDate ? new Date(order.orderDate).toLocaleDateString("en-IN") : "—",
+                      receivedDate: latestReceiptDate(order)
+                        ? new Date(latestReceiptDate(order) as string).toLocaleDateString("en-IN")
+                        : order.closedAt
+                          ? new Date(order.closedAt).toLocaleDateString("en-IN")
+                          : "—",
+                      lines: <span className="font-medium">{order.lines.length}</span>,
+                      value: <span className="font-medium">₹{order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>,
+                      status: (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                          {order.status === "CLOSED" ? "Closed" : "Received"}
+                        </span>
+                      ),
+                      receipt: latestReceipt(order)?.id ? (
+                        <button onClick={() => downloadReceipt(latestReceipt(order)!.id)} className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium text-accent hover:bg-accent/10 transition-colors border border-accent/20">Receipt</button>
+                      ) : <span className="text-gray-300">—</span>
+                    }))}
+                    emptyLabel={loading ? "Loading completed POs..." : "No completed POs in this range."}
+                  />
+                )}
+
+                {pages.poTab === "deleted" && (
+                  <DataTable
+                    columns={[
+                      { key: "po", label: "PO" },
+                      { key: "vendor", label: "Vendor" },
+                      { key: "type", label: "Type" },
+                      { key: "deletedAt", label: "Deleted On" },
+                      { key: "value", label: "Value", align: "right" as const },
+                      { key: "status", label: "Status" }
+                    ]}
+                    rows={filteredDeleted.map((order) => ({
+                      po: <span className="font-semibold text-gray-400 line-through">{order.poNumber ?? "—"}</span>,
+                      vendor: <span className="text-gray-400">{order.vendor.name}</span>,
+                      type: (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${order.type === "SUBCONTRACT" ? "bg-purple-50/50 text-purple-400 border border-purple-100" : "bg-blue-50/50 text-blue-400 border border-blue-100"
+                          }`}>{order.type === "SUBCONTRACT" ? "Subcontract" : "Raw"}</span>
+                      ),
+                      deletedAt: order.deletedAt ? new Date(order.deletedAt).toLocaleDateString("en-IN") : "—",
+                      value: <span className="font-medium text-gray-400">₹{order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>,
+                      status: (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                          Deleted
+                        </span>
+                      )
+                    }))}
+                    emptyLabel={loading ? "Loading deleted POs..." : "No deleted POs."}
+                  />
+                )}
+              </div>
+
+              <p className="px-2 py-2 text-xs text-text-muted text-center border-t border-gray-100 mt-2">
+                {(() => {
+                  const counts: Record<string, number> = {
+                    drafts: filteredDraft.length,
+                    pending: filteredPending.length,
+                    approved: filteredApproved.length,
+                    completed: filteredReceived.length,
+                    deleted: filteredDeleted.length,
+                  };
+                  return `${counts[pages.poTab] ?? 0} order${(counts[pages.poTab] ?? 0) !== 1 ? "s" : ""}`;
+                })()}
+              </p>
             </CardBody>
           </Card>
         </div>
@@ -1482,45 +1421,113 @@ export default function PurchasingPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Vendor Bills</CardTitle>
-        </CardHeader>
+        <div className="px-6 pt-5 pb-0">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-1">
+              {[
+                { key: "all", label: "All", count: vendorBills.length },
+                { key: "paid", label: "Paid", count: vendorBills.filter(b => b.status === "PAID").length },
+                { key: "unpaid", label: "Unpaid", count: vendorBills.filter(b => b.status !== "PAID").length },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setPages((prev) => ({ ...prev, billTab: tab.key }))}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${(pages as Record<string, unknown>).billTab === tab.key || (!(pages as Record<string, unknown>).billTab && tab.key === "all")
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-500 hover:bg-gray-100"
+                    }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
         <CardBody>
-          <DataTable
-            columns={[
-              { key: "bill", label: "Bill" },
-              { key: "vendor", label: "Vendor" },
-              { key: "sku", label: "SKU Name" },
-              { key: "unitPrice", label: "Unit Price", align: "right" },
-              { key: "po", label: "PO" },
-              { key: "billDate", label: "Bill Date" },
-              { key: "dueDate", label: "Due Date" },
-              { key: "total", label: "Total", align: "right" },
-              { key: "balance", label: "Balance", align: "right" },
-              { key: "status", label: "Status" },
-              { key: "receipt", label: "" }
-            ]}
-            rows={vendorBills.map((bill) => ({
-              bill: bill.billNumber ?? "—",
-              vendor: bill.vendor.name,
-              sku: summarizeBillSkus(bill.lines),
-              unitPrice: summarizeBillUnitPrice(bill.lines),
-              po: bill.purchaseOrder?.poNumber ?? "—",
-              billDate: new Date(bill.billDate).toLocaleDateString("en-IN"),
-              dueDate: bill.dueDate ? new Date(bill.dueDate).toLocaleDateString("en-IN") : "—",
-              total: bill.totalAmount.toFixed(2),
-              balance: bill.balanceAmount.toFixed(2),
-              status: bill.status,
-              receipt: bill.receipt?.id ? (
-                <Button variant="ghost" onClick={() => downloadReceipt(bill.receipt!.id)}>
-                  Receipt
-                </Button>
-              ) : (
-                "—"
-              )
-            }))}
-            emptyLabel={loading ? "Loading bills..." : "No vendor bills yet."}
-          />
+          <div className="max-h-[600px] overflow-y-auto">
+            <DataTable
+              columns={[
+                { key: "bill", label: "Bill" },
+                { key: "vendor", label: "Vendor" },
+                { key: "sku", label: "SKU Name" },
+                { key: "unitPrice", label: "Unit Price", align: "right" },
+                { key: "po", label: "PO" },
+                { key: "billDate", label: "Bill Date" },
+                { key: "dueDate", label: "Due Date" },
+                { key: "total", label: "Total", align: "right" },
+                { key: "balance", label: "Balance", align: "right" },
+                { key: "status", label: "Status" },
+                { key: "receipt", label: "" }
+              ]}
+              rows={[...vendorBills]
+                .filter((bill) => {
+                  if (pages.billTab === "paid") return bill.status === "PAID";
+                  if (pages.billTab === "unpaid") return bill.status !== "PAID";
+                  return true;
+                })
+                .sort((a, b) => new Date(b.billDate).getTime() - new Date(a.billDate).getTime())
+                .map((bill) => {
+                  const isPaid = bill.status === "PAID";
+                  const isOverdue = !isPaid && bill.dueDate && new Date(bill.dueDate) < new Date();
+                  return {
+                    bill: (
+                      <span className="font-semibold text-accent">{bill.billNumber ?? "—"}</span>
+                    ),
+                    vendor: bill.vendor.name,
+                    sku: summarizeBillSkus(bill.lines),
+                    unitPrice: summarizeBillUnitPrice(bill.lines),
+                    po: (
+                      <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{bill.purchaseOrder?.poNumber ?? "—"}</span>
+                    ),
+                    billDate: new Date(bill.billDate).toLocaleDateString("en-IN"),
+                    dueDate: bill.dueDate ? (
+                      <span className={isOverdue ? "text-red-600 font-medium" : ""}>
+                        {new Date(bill.dueDate).toLocaleDateString("en-IN")}
+                        {isOverdue && <span className="ml-1 text-[10px] text-red-500">Overdue</span>}
+                      </span>
+                    ) : "—",
+                    total: (
+                      <span className="font-medium">₹{bill.totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    ),
+                    balance: (
+                      <span className={`font-medium ${bill.balanceAmount > 0 ? "text-red-600" : "text-green-600"}`}>
+                        ₹{bill.balanceAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </span>
+                    ),
+                    status: (
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${isPaid
+                        ? "bg-green-50 text-green-700 border border-green-200"
+                        : "bg-orange-50 text-orange-700 border border-orange-200"
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isPaid ? "bg-green-500" : "bg-orange-500"}`} />
+                        {isPaid ? "Paid" : "Unpaid"}
+                      </span>
+                    ),
+                    receipt: bill.receipt?.id ? (
+                      <button
+                        onClick={() => downloadReceipt(bill.receipt!.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
+                      >
+                        Receipt
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )
+                  };
+                })}
+              emptyLabel={loading ? "Loading bills..." : "No vendor bills yet."}
+            />
+          </div>
+          <p className="px-2 py-2 text-xs text-text-muted text-center border-t border-gray-100">
+            {(() => {
+              const filtered = vendorBills.filter((b) => {
+                if (pages.billTab === "paid") return b.status === "PAID";
+                if (pages.billTab === "unpaid") return b.status !== "PAID";
+                return true;
+              });
+              return `${filtered.length} bill${filtered.length !== 1 ? "s" : ""}`;
+            })()}
+          </p>
 
           <div className="mt-6 space-y-4">
             <p className="text-sm font-medium text-text">Record Vendor Payment</p>

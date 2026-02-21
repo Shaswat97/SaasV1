@@ -402,9 +402,9 @@ export default function InventoryPage() {
         line.skuId
           ? line
           : {
-              ...line,
-              skuId: index === 0 ? scrapSkuOptions[0].value : line.skuId
-            }
+            ...line,
+            skuId: index === 0 ? scrapSkuOptions[0].value : line.skuId
+          }
       )
     );
   }, [scrapSkuOptions]);
@@ -545,7 +545,7 @@ export default function InventoryPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="flex flex-wrap gap-3">
         {summary.length === 0 ? (
           <Card>
             <CardBody>
@@ -557,17 +557,17 @@ export default function InventoryPage() {
             <button
               key={bucket.label}
               type="button"
-              className="h-full text-left"
+              className="min-w-[180px] flex-1 text-left"
               onClick={() => {
                 setSelectedSummaryLabel(bucket.label);
                 setSummaryOpen(true);
               }}
             >
-              <Card className="h-full transition hover:border-primary/40 hover:shadow-md">
-                <CardBody className="flex min-h-[140px] flex-col justify-between">
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{bucket.label}</p>
-                  <p className="text-2xl font-semibold text-text">{number.format(bucket.qty)}</p>
-                  <p className="text-sm text-text-muted">Value {currency.format(bucket.value)}</p>
+              <Card className="transition hover:border-primary/40 hover:shadow-md">
+                <CardBody className="flex flex-col gap-1 p-4">
+                  <p className="text-[10px] uppercase tracking-[0.15em] text-text-muted">{bucket.label}</p>
+                  <p className="text-xl font-semibold text-text">{number.format(bucket.qty)}</p>
+                  <p className="text-xs text-text-muted mt-1">Value {currency.format(bucket.value)}</p>
                 </CardBody>
               </Card>
             </button>
@@ -581,84 +581,83 @@ export default function InventoryPage() {
         </CardHeader>
         <CardBody>
           <div className="grid items-start gap-4 lg:grid-cols-[3.6fr_1.4fr]">
-              <div className="space-y-2">
-                <span className="text-sm text-text-muted">Quick Filters</span>
-                <div className="flex flex-wrap gap-2">
-                  {zoneQuickFilters.map((filter) => (
-                    <button
-                      key={filter.key}
-                      type="button"
-                      aria-pressed={selectedZoneType === filter.key && selectedZoneId === "ALL"}
-                      onClick={() => {
-                        setSelectedZoneType(filter.key);
-                        setSelectedZoneId("ALL");
-                      }}
-                      className={`min-w-[126px] rounded-2xl border px-4 py-3 text-left transition ${
-                        selectedZoneType === filter.key && selectedZoneId === "ALL"
-                          ? "border-primary/60 bg-primary/15 text-primary shadow-sm"
-                          : "border-border/60 bg-surface hover:border-primary/40 hover:bg-bg-subtle/80"
+            <div className="space-y-2">
+              <span className="text-sm text-text-muted">Quick Filters</span>
+              <div className="flex flex-wrap gap-2">
+                {zoneQuickFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    aria-pressed={selectedZoneType === filter.key && selectedZoneId === "ALL"}
+                    onClick={() => {
+                      setSelectedZoneType(filter.key);
+                      setSelectedZoneId("ALL");
+                    }}
+                    className={`min-w-[126px] rounded-2xl border px-4 py-3 text-left transition ${selectedZoneType === filter.key && selectedZoneId === "ALL"
+                      ? "border-primary/60 bg-primary/15 text-primary shadow-sm"
+                      : "border-border/60 bg-surface hover:border-primary/40 hover:bg-bg-subtle/80"
                       }`}
-                    >
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{filter.label}</div>
-                      <div className="mt-1 text-sm font-semibold text-text">{number.format(filter.qty)}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="lg:max-w-[460px]">
-                <Select
-                  label="Zone"
-                  value={selectedZoneId}
-                  onChange={(event) => {
-                    setSelectedZoneId(event.target.value);
-                    setSelectedZoneType("ALL");
-                  }}
-                  options={zoneOptions}
-                />
-              </div>
-              <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-4 text-sm text-text-muted lg:col-span-2">
-                {selectedZoneId !== "ALL"
-                  ? "Showing SKUs in the selected zone."
-                  : selectedZoneType === "ALL"
-                    ? "Showing all zones."
-                    : `Showing ${zoneTypeLabel[selectedZoneType] ?? selectedZoneType} zones.`}
+                  >
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{filter.label}</div>
+                    <div className="mt-1 text-sm font-semibold text-text">{number.format(filter.qty)}</div>
+                  </button>
+                ))}
               </div>
             </div>
+            <div className="lg:max-w-[460px]">
+              <Select
+                label="Zone"
+                value={selectedZoneId}
+                onChange={(event) => {
+                  setSelectedZoneId(event.target.value);
+                  setSelectedZoneType("ALL");
+                }}
+                options={zoneOptions}
+              />
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-bg-subtle/80 p-4 text-sm text-text-muted lg:col-span-2">
+              {selectedZoneId !== "ALL"
+                ? "Showing SKUs in the selected zone."
+                : selectedZoneType === "ALL"
+                  ? "Showing all zones."
+                  : `Showing ${zoneTypeLabel[selectedZoneType] ?? selectedZoneType} zones.`}
+            </div>
+          </div>
 
-            <div className="mt-6">
-              <div className="mb-3 text-xs text-text-muted">
-                Showing all {filteredBalances.length} entries · Scroll to view more
-              </div>
-              <div className="max-h-[520px] overflow-y-auto pr-1">
-                <DataTable
-                  columns={[
-                    ...(showZoneColumn ? [{ key: "zone", label: "Zone" }] : []),
-                    { key: "sku", label: "SKU" },
-                    { key: "qty", label: "Qty", align: "right" },
-                    { key: "cost", label: "Cost / Unit", align: "right" },
-                    { key: "value", label: "Stock Value", align: "right" },
-                    { key: "sell", label: "Sell / Unit", align: "right" },
-                    { key: "sellValue", label: "Sell Value", align: "right" }
-                  ]}
-                  rows={filteredBalances.map((balance) => {
-                    const sellUnit = balance.sku.sellingPrice ?? null;
-                    const sellValue = sellUnit ? sellUnit * balance.quantityOnHand : null;
-                    return {
-                      zone: `${balance.zone.name} · ${balance.zone.warehouse.code}`,
-                      sku: `${balance.sku.code} · ${balance.sku.name}`,
-                      qty: formatQty(balance.quantityOnHand, balance.sku.unit),
-                      cost: `${currency.format(balance.costPerUnit)} / ${balance.sku.unit}`,
-                      value: currency.format(balance.totalCost),
-                      sell: sellUnit ? `${currency.format(sellUnit)} / ${balance.sku.unit}` : "—",
-                      sellValue: sellValue ? currency.format(sellValue) : "—"
-                    };
-                  })}
-                  emptyLabel={loading ? "Loading inventory..." : "No inventory for this view."}
-                />
-              </div>
+          <div className="mt-6">
+            <div className="mb-3 text-xs text-text-muted">
+              Showing all {filteredBalances.length} entries · Scroll to view more
             </div>
-          </CardBody>
-        </Card>
+            <div className="max-h-[520px] overflow-y-auto pr-1">
+              <DataTable
+                columns={[
+                  ...(showZoneColumn ? [{ key: "zone", label: "Zone" }] : []),
+                  { key: "sku", label: "SKU" },
+                  { key: "qty", label: "Qty", align: "right" },
+                  { key: "cost", label: "Cost / Unit", align: "right" },
+                  { key: "value", label: "Stock Value", align: "right" },
+                  { key: "sell", label: "Sell / Unit", align: "right" },
+                  { key: "sellValue", label: "Sell Value", align: "right" }
+                ]}
+                rows={filteredBalances.map((balance) => {
+                  const sellUnit = balance.sku.sellingPrice ?? null;
+                  const sellValue = sellUnit ? sellUnit * balance.quantityOnHand : null;
+                  return {
+                    zone: `${balance.zone.name} · ${balance.zone.warehouse.code}`,
+                    sku: `${balance.sku.code} · ${balance.sku.name}`,
+                    qty: formatQty(balance.quantityOnHand, balance.sku.unit),
+                    cost: `${currency.format(balance.costPerUnit)} / ${balance.sku.unit}`,
+                    value: currency.format(balance.totalCost),
+                    sell: sellUnit ? `${currency.format(sellUnit)} / ${balance.sku.unit}` : "—",
+                    sellValue: sellValue ? currency.format(sellValue) : "—"
+                  };
+                })}
+                emptyLabel={loading ? "Loading inventory..." : "No inventory for this view."}
+              />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -770,8 +769,8 @@ export default function InventoryPage() {
                       <span>
                         {balance
                           ? `Available ${number.format(balance.quantityOnHand)} ${balance.sku.unit} · Cost ${currency.format(
-                              balance.costPerUnit
-                            )}/${balance.sku.unit}`
+                            balance.costPerUnit
+                          )}/${balance.sku.unit}`
                           : "Select a SKU from Scrap zone."}
                       </span>
                       {line.skuId && getLastScrapPrice(scrapBuyerName, line.skuId) ? (

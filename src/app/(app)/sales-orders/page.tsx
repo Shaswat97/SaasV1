@@ -15,6 +15,27 @@ import { Select } from "@/components/Select";
 import { ToastViewport } from "@/components/ToastViewport";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { useToast } from "@/lib/use-toast";
+import { MetricCard } from "@/components/dashboard/MetricCard";
+import { DateFilter, getPresetRange } from "@/components/DateFilter";
+import type { DateRange } from "@/components/DateFilter";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Eye,
+  MessageSquare,
+  MoreHorizontal,
+  Search,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Package,
+  ShoppingCart,
+  Users,
+  CheckCircle2,
+  ArrowUp
+} from "lucide-react";
 
 type Customer = {
   id: string;
@@ -82,6 +103,7 @@ type InvoiceLine = {
   unitPrice: number;
   discountPct?: number | null;
   taxPct?: number | null;
+  sku: { code: string; name: string; unit: string };
 };
 
 type Invoice = {
@@ -706,6 +728,19 @@ export default function SalesOrdersPage() {
     }
   }
 
+  async function skipProduction(orderId: string) {
+    try {
+      await apiSend(`/api/sales-orders/${orderId}/skip-production`, "POST");
+      push("success", "Order dispatched from finished stock");
+      loadData();
+      setFocusSection("deliveries");
+      openDetail(orderId);
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to dispatch from finished stock");
+    }
+  }
+
+
   async function createDraftPo() {
     if (!detail) return;
     try {
@@ -810,26 +845,68 @@ export default function SalesOrdersPage() {
         lines: payloadLines
       });
       push("success", "Delivery recorded");
-      const newDeliveries = updated.deliveries.filter((delivery) => !existingDeliveryIds.has(delivery.id));
-      for (const delivery of newDeliveries) {
-        try {
-          const invoice = await apiSend<Invoice>(
-            `/api/sales-orders/${updated.id}/deliveries/${delivery.id}/invoice`,
-            "POST"
-          );
-          if (autoInvoice) {
+
+      // Only create per-delivery invoice when user explicitly chose "Post Delivery + Print Invoice"
+      if (autoInvoice) {
+        const newDeliveries = updated.deliveries.filter((delivery) => !existingDeliveryIds.has(delivery.id));
+        for (const delivery of newDeliveries) {
+          try {
+            const invoice = await apiSend<Invoice>(
+              `/api/sales-orders/${updated.id}/deliveries/${delivery.id}/invoice`,
+              "POST"
+            );
             downloadInvoicePdf(invoice.id, includePackagingInInvoice);
+          } catch (error: any) {
+            push("error", error.message ?? "Failed to create invoice");
           }
-        } catch (error: any) {
-          push("error", error.message ?? "Failed to create invoice");
         }
       }
+
       openDetail(detail.id);
       loadData();
     } catch (error: any) {
       push("error", error.message ?? "Failed to record delivery");
     }
   }
+
+  async function createConsolidatedInvoice() {
+    if (!detail) return;
+
+    // Calculate un-invoiced qty per order line
+    const invoicedQtyByLine = new Map<string, number>();
+    for (const inv of detail.invoices) {
+      for (const line of inv.lines) {
+        invoicedQtyByLine.set(line.soLineId, (invoicedQtyByLine.get(line.soLineId) ?? 0) + line.quantity);
+      }
+    }
+
+    const lines = detail.lines
+      .map((line) => {
+        const delivered = line.deliveredQty ?? 0;
+        const invoiced = invoicedQtyByLine.get(line.id) ?? 0;
+        const openQty = Math.max(delivered - invoiced, 0);
+        return { lineId: line.id, quantity: openQty, unitPrice: line.unitPrice, openQty };
+      })
+      .filter((l) => l.openQty > 0);
+
+    if (lines.length === 0) {
+      push("error", "All delivered quantities are already invoiced");
+      return;
+    }
+
+    try {
+      const invoice = await apiSend<Invoice>(`/api/sales-orders/${detail.id}/invoices`, "POST", {
+        lines: lines.map(({ lineId, quantity, unitPrice }) => ({ lineId, quantity, unitPrice }))
+      });
+      push("success", `Consolidated invoice ${(invoice as any).invoiceNumber ?? ""} created`);
+      downloadInvoicePdf(invoice.id, includePackagingInInvoice);
+      openDetail(detail.id);
+      loadData();
+    } catch (error: any) {
+      push("error", error.message ?? "Failed to create consolidated invoice");
+    }
+  }
+
 
   async function createInvoiceForDelivery(deliveryId: string) {
     if (!detail) return;
@@ -848,6 +925,11 @@ export default function SalesOrdersPage() {
     const param = includePackaging ? "1" : "0";
     window.open(`/api/sales-orders/invoices/${invoiceId}/pdf?includePackaging=${param}`, "_blank");
   }
+
+  function downloadPackingSlip(orderId: string, deliveryId: string) {
+    window.open(`/api/sales-orders/${orderId}/deliveries/${deliveryId}/packing-slip`, "_blank");
+  }
+
 
   async function submitPayment() {
     if (!detail) return;
@@ -912,38 +994,175 @@ export default function SalesOrdersPage() {
     }
   }
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [createFormOpen, setCreateFormOpen] = useState(false);
+  const [alertsModalOpen, setAlertsModalOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(() => getPresetRange("all"));
+
+  /* ---- date-filtered orders ---- */
+  const dateFilteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      if (!o.orderDate) return true;
+      const d = new Date(o.orderDate);
+      return d >= dateRange.from && d <= dateRange.to;
+    });
+  }, [orders, dateRange]);
+
+  const orderSummary = useMemo(() => {
+    const src = dateFilteredOrders;
+    const totalOrders = src.length;
+    const totalItems = src.reduce((sum, o) => sum + o.lines.length, 0);
+    const scrapOrders = src.filter((o) => o.lines.some((l) => l.scrapQty > 0)).length;
+    const customerOrders = totalOrders - scrapOrders;
+    const completedOrders = src.filter((o) => o.status === "DELIVERED" || o.status === "INVOICED").length;
+    const fulfilledOrders = completedOrders;
+    const productionOrders = src.filter((o) => o.status === "PRODUCTION").length;
+    const notStartedOrders = src.filter((o) => o.status === "QUOTE" || o.status === "CONFIRMED").length;
+    return { totalOrders, totalItems, customerOrders, scrapOrders, fulfilledOrders, completedOrders, productionOrders, notStartedOrders };
+  }, [dateFilteredOrders]);
+
+  const orderAlerts = useMemo(() => {
+    const now = Date.now();
+    const MS_PER_DAY = 86400000;
+    const alerts: { id: string; soNumber: string; customer: string; message: string; severity: "red" | "orange" | "yellow" }[] = [];
+
+    for (const o of dateFilteredOrders) {
+      const ageMs = now - new Date(o.orderDate).getTime();
+      const ageDays = Math.floor(ageMs / MS_PER_DAY);
+
+      // Stalled: QUOTE/CONFIRMED for 14+ days
+      if ((o.status === "QUOTE" || o.status === "CONFIRMED") && ageDays >= 14) {
+        alerts.push({
+          id: o.id,
+          soNumber: o.soNumber ?? o.id,
+          customer: o.customer.name,
+          message: `Stalled at ${o.status} for ${ageDays} days — production not started`,
+          severity: ageDays >= 21 ? "red" : "orange"
+        });
+      }
+
+      // Long in production: PRODUCTION for 10+ days
+      if (o.status === "PRODUCTION" && ageDays >= 10) {
+        alerts.push({
+          id: o.id,
+          soNumber: o.soNumber ?? o.id,
+          customer: o.customer.name,
+          message: `In production for ${ageDays} days — delivery may be delayed`,
+          severity: ageDays >= 20 ? "red" : "orange"
+        });
+      }
+
+      // Payment overdue: has outstanding balance
+      if (o.payment && o.payment.outstanding > 0 && (o.status === "DELIVERED" || o.status === "INVOICED")) {
+        const daysOverdue = o.creditDays ? Math.max(0, ageDays - o.creditDays) : 0;
+        if (daysOverdue > 0) {
+          alerts.push({
+            id: o.id,
+            soNumber: o.soNumber ?? o.id,
+            customer: o.customer.name,
+            message: `Payment overdue by ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} — ₹${o.payment.outstanding.toLocaleString("en-IN")} outstanding`,
+            severity: daysOverdue > 14 ? "red" : "yellow"
+          });
+        }
+      }
+    }
+
+    return alerts.sort((a, b) => (a.severity === "red" ? -1 : b.severity === "red" ? 1 : 0));
+  }, [dateFilteredOrders]);
+
+  /* ---- status counts ---- */
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: dateFilteredOrders.length };
+    dateFilteredOrders.forEach((o) => {
+      counts[o.status] = (counts[o.status] ?? 0) + 1;
+    });
+    return counts;
+  }, [dateFilteredOrders]);
+
+  /* ---- status + search filter ---- */
+  const filteredOrders = useMemo(() => {
+    let filtered = dateFilteredOrders;
+    if (activeFilter !== "all") {
+      filtered = filtered.filter((o) => o.status === activeFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter((o) =>
+        (o.soNumber ?? "").toLowerCase().includes(q) ||
+        o.customer.name.toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [dateFilteredOrders, activeFilter, searchQuery]);
+
   function buildOrderRows(source: SalesOrder[]) {
     return source.map((order) => {
-      const badge = statusBadge[order.status] ?? { label: order.status, variant: "neutral" };
+      const badge = statusBadge[order.status] ?? { label: order.status, variant: "neutral" as const };
+      const paymentStatus = order.payment?.status ?? "NOT_BILLED";
+      const isFulfilled = order.status === "DELIVERED" || order.status === "INVOICED";
+      const total = order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0);
+      const itemCount = order.lines.length;
       const billed = order.payment?.totalBilled ?? 0;
       const paid = order.payment?.totalPaid ?? 0;
       const outstanding = order.payment?.outstanding ?? 0;
-      const paymentStatus = order.payment?.status ?? "NOT_BILLED";
-      const paymentBadge =
-        paymentStatus === "PAID"
-          ? { label: "Paid", variant: "success" as const }
-          : paymentStatus === "PARTIALLY_PAID"
-            ? { label: "Partially Paid", variant: "warning" as const }
-            : paymentStatus === "UNPAID"
-              ? { label: "Unpaid", variant: "danger" as const }
-              : { label: "Not Billed", variant: "neutral" as const };
       return {
-        so: order.soNumber ?? "—",
-        customer: order.customer.name,
-        value: order.lines.reduce((sum, line) => sum + lineNetTotal(line), 0).toFixed(2),
-        status: <Badge {...badge} />,
-        payment: <Badge {...paymentBadge} />,
-        paid: `${paid.toFixed(2)} / ${billed.toFixed(2)}${outstanding > 0 ? ` (Bal ${outstanding.toFixed(2)})` : ""}`,
+        so: (
+          <button
+            onClick={() => { setFocusSection(null); openDetail(order.id); }}
+            className="text-accent font-semibold hover:underline text-left"
+          >
+            {order.soNumber ?? '—'}
+          </button>
+        ),
         date: formatDate(order.orderDate),
+        customer: order.customer.name,
+        value: formatCurrency(total, order.currency),
+        status: <Badge {...badge} />,
+        payment: (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+            <span className={`w-2 h-2 rounded-full ${paymentStatus === "PAID" ? "bg-green-500" : paymentStatus === "PARTIALLY_PAID" ? "bg-yellow-500" : "bg-orange-400"}`} />
+            {paymentStatus === "PAID" ? "Paid" : paymentStatus === "PARTIALLY_PAID" ? "Partial" : paymentStatus === "UNPAID" ? "Unpaid" : "Not Billed"}
+          </span>
+        ),
+        paid: `${formatCurrency(paid)} / ${formatCurrency(billed)}${outstanding > 0 ? ` (Bal ${formatCurrency(outstanding)})` : ""}`,
+        items: `${itemCount} item${itemCount !== 1 ? "s" : ""}`,
+        fulfillment: (() => {
+          // For DISPATCH orders show delivery progress — how much of each SKU has shipped
+          if (order.status === "DISPATCH") {
+            const totalOrdered = order.lines.reduce((s, l) => s + l.quantity, 0);
+            const totalDelivered = order.lines.reduce((s, l) => s + (l.deliveredQty ?? 0), 0);
+            const pct = totalOrdered > 0 ? Math.round((totalDelivered / totalOrdered) * 100) : 0;
+            return (
+              <div className="min-w-[120px]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-amber-700 font-medium">
+                    {totalDelivered} / {totalOrdered}
+                  </span>
+                  <span className="text-xs text-text-muted">{pct}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-gray-200">
+                  <div
+                    className="h-1.5 rounded-full bg-amber-400 transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${isFulfilled
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+              }`}>
+              <span className={`w-2 h-2 rounded-full ${isFulfilled ? "bg-green-500" : "bg-red-500"}`} />
+              {isFulfilled ? "Fulfilled" : "Unfulfilled"}
+            </span>
+          );
+        })(),
         actions: (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setFocusSection(null);
-                openDetail(order.id);
-              }}
-            >
+          <div className="flex flex-wrap items-center gap-1">
+            <Button variant="ghost" onClick={() => { setFocusSection(null); openDetail(order.id); }}>
               View
             </Button>
             {order.status === "QUOTE" ? (
@@ -957,9 +1176,21 @@ export default function SalesOrdersPage() {
               </>
             ) : null}
             {order.status === "CONFIRMED" ? (
-              <Button variant="ghost" onClick={() => updateStatus(order, "production")}>
-                Start Production
-              </Button>
+              <>
+                <Button variant="ghost" onClick={() => updateStatus(order, "production")}>
+                  Start Production
+                </Button>
+                {order.lines.some((l) => (l.producedQty ?? 0) <= 0) && (
+                  <Button
+                    variant="ghost"
+                    className="text-emerald-600 hover:text-emerald-700"
+                    onClick={() => skipProduction(order.id)}
+                    title="Fulfill this order directly from finished goods stock, skipping production"
+                  >
+                    Use Finished Stock
+                  </Button>
+                )}
+              </>
             ) : null}
             {order.status === "PRODUCTION" ? (
               <Button
@@ -973,10 +1204,7 @@ export default function SalesOrdersPage() {
             {order.status === "DISPATCH" ? (
               <Button
                 variant="ghost"
-                onClick={() => {
-                  setFocusSection("deliveries");
-                  openDetail(order.id);
-                }}
+                onClick={() => { setFocusSection("deliveries"); openDetail(order.id); }}
               >
                 Mark Delivered
               </Button>
@@ -987,62 +1215,65 @@ export default function SalesOrdersPage() {
     });
   }
 
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: orders.length };
-    orders.forEach((order) => {
-      counts[order.status] = (counts[order.status] ?? 0) + 1;
-    });
-    return counts;
-  }, [orders]);
+  const orderTableColumns: DataColumn[] = [
+    { key: "so", label: "Order" },
+    { key: "date", label: "Date" },
+    { key: "customer", label: "Customer" },
+    { key: "value", label: "Value", align: "right" },
+    { key: "status", label: "Status" },
+    { key: "payment", label: "Payment" },
+    { key: "paid", label: "Paid / Billed", align: "right" },
+    { key: "items", label: "Items" },
+    { key: "fulfillment", label: "Fulfilment" },
+    { key: "actions", label: "" }
+  ];
 
-  const statusTabs = useMemo(() => {
-    const columns: DataColumn[] = [
-      { key: "so", label: "Order" },
-      { key: "customer", label: "Customer" },
-      { key: "value", label: "Value", align: "right" },
-      { key: "status", label: "Status" },
-      { key: "payment", label: "Payment" },
-      { key: "paid", label: "Paid / Billed", align: "right" },
-      { key: "date", label: "Date" },
-      { key: "actions", label: "" }
-    ];
-
-    const buildContent = (items: SalesOrder[]) => (
-      <DataTable
-        columns={columns}
-        rows={buildOrderRows(items)}
-        emptyLabel={loading ? "Loading orders..." : "No orders found."}
-      />
-    );
-
-    return [
-      { label: `All (${statusCounts.all ?? 0})`, value: "all", content: buildContent(orders) },
-      { label: `Quote (${statusCounts.QUOTE ?? 0})`, value: "QUOTE", content: buildContent(orders.filter((o) => o.status === "QUOTE")) },
-      { label: `Confirmed (${statusCounts.CONFIRMED ?? 0})`, value: "CONFIRMED", content: buildContent(orders.filter((o) => o.status === "CONFIRMED")) },
-      { label: `Production (${statusCounts.PRODUCTION ?? 0})`, value: "PRODUCTION", content: buildContent(orders.filter((o) => o.status === "PRODUCTION")) },
-      { label: `Dispatch (${statusCounts.DISPATCH ?? 0})`, value: "DISPATCH", content: buildContent(orders.filter((o) => o.status === "DISPATCH")) },
-      { label: `Delivered (${statusCounts.DELIVERED ?? 0})`, value: "DELIVERED", content: buildContent(orders.filter((o) => o.status === "DELIVERED")) },
-      { label: `Invoiced (${statusCounts.INVOICED ?? 0})`, value: "INVOICED", content: buildContent(orders.filter((o) => o.status === "INVOICED")) }
-    ];
-  }, [orders, statusCounts, loading]);
+  const statusFilterTabs = [
+    { key: "all", label: "All" },
+    { key: "QUOTE", label: "Quote" },
+    { key: "CONFIRMED", label: "Confirmed" },
+    { key: "PRODUCTION", label: "Production" },
+    { key: "DISPATCH", label: "Dispatch" },
+    { key: "DELIVERED", label: "Delivered" },
+    { key: "INVOICED", label: "Invoiced" }
+  ];
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <ToastViewport toasts={toasts} onDismiss={remove} />
-      <SectionHeader
-        title="Sales Orders"
-        subtitle="Track quotes, production milestones, and delivery commitments."
-        actions={
-          <Button variant="secondary" onClick={addLine}>
-            Add Line
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-text-muted">Techno Synergians</p>
+          <h1 className="mt-2 text-3xl font-semibold">Orders</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" className="gap-2">
+            <Download className="w-4 h-4" />
+            Export
           </Button>
-        }
+          <Button onClick={() => setCreateFormOpen(!createFormOpen)}>
+            Create order
+          </Button>
+        </div>
+      </div>
+
+      {/* Date Filter */}
+      <DateFilter
+        value={dateRange}
+        onChange={(range) => setDateRange(range)}
+        defaultPreset="all"
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_1.8fr]">
+      {/* Collapsible Create Form */}
+      {createFormOpen && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Create Sales Order</CardTitle>
+            <button onClick={() => setCreateFormOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <ChevronUp className="w-5 h-5" />
+            </button>
           </CardHeader>
           <CardBody>
             <form className="space-y-4" onSubmit={handleCreate}>
@@ -1099,9 +1330,8 @@ export default function SalesOrdersPage() {
                     const lastPrice = lastKey ? lastPriceMap[lastKey] : null;
                     const lastPriceHint = line.skuId
                       ? lastPrice
-                        ? `Last price: ${formatCurrency(lastPrice.unitPrice)}${lastPrice.soNumber ? ` · ${lastPrice.soNumber}` : ""}${
-                            lastPrice.date ? ` · ${formatDate(lastPrice.date)}` : ""
-                          }`
+                        ? `Last price: ${formatCurrency(lastPrice.unitPrice)}${lastPrice.soNumber ? ` \u00b7 ${lastPrice.soNumber}` : ""}${lastPrice.date ? ` \u00b7 ${formatDate(lastPrice.date)}` : ""
+                        }`
                         : "No previous price for this customer."
                       : undefined;
 
@@ -1190,16 +1420,216 @@ export default function SalesOrdersPage() {
             </form>
           </CardBody>
         </Card>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Orders</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <Tabs items={statusTabs} defaultValue="all" />
-          </CardBody>
-        </Card>
+      {/* Summary Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Orders</p>
+              <h3 className="text-2xl font-bold text-gray-900 mt-1">{orderSummary.totalOrders}</h3>
+            </div>
+            <div className="p-2 rounded-lg bg-gray-50 text-purple-500">
+              <ShoppingCart className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-green-50 px-2 py-2">
+              <p className="text-[10px] font-medium text-green-500 uppercase tracking-wide">Completed</p>
+              <p className="text-lg font-bold text-green-700">{orderSummary.completedOrders}</p>
+            </div>
+            <div className="rounded-lg bg-blue-50 px-2 py-2">
+              <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wide">In Prod.</p>
+              <p className="text-lg font-bold text-blue-700">{orderSummary.productionOrders}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-2 py-2">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Pending</p>
+              <p className="text-lg font-bold text-gray-700">{orderSummary.notStartedOrders}</p>
+            </div>
+          </div>
+        </div>
+        {/* Alerts Card */}
+        <button
+          onClick={() => setAlertsModalOpen(true)}
+          className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100 text-left hover:shadow-md hover:border-orange-200 transition-all group"
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Alerts</p>
+              <h3 className={`text-2xl font-bold mt-1 ${orderAlerts.length > 0 ? "text-orange-500" : "text-gray-900"}`}>
+                {orderAlerts.length}
+              </h3>
+            </div>
+            <div className={`relative p-2 rounded-lg ${orderAlerts.length > 0 ? "bg-orange-50" : "bg-gray-50"}`}>
+              <AlertTriangle className={`w-5 h-5 ${orderAlerts.length > 0 ? "text-orange-500" : "text-gray-400"}`} />
+              {orderAlerts.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                  {orderAlerts.filter(a => a.severity === "red").length || "!"}
+                </span>
+              )}
+            </div>
+          </div>
+          {orderAlerts.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                {orderAlerts.filter(a => a.severity === "red").length} critical
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                {orderAlerts.filter(a => a.severity === "orange").length} warnings
+              </span>
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">
+              All clear
+            </span>
+          )}
+        </button>
+        <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Order Split</p>
+            </div>
+            <div className="p-2 rounded-lg bg-gray-50 text-green-500">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-400 mb-0.5">Customer</p>
+              <p className="text-xl font-bold text-gray-900">{orderSummary.customerOrders}</p>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-emerald-500 bg-emerald-50 mt-1">
+                <ArrowUp className="w-3 h-3" />
+                {orderSummary.customerOrders} orders
+              </span>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-0.5">Scrap Material</p>
+              <p className="text-xl font-bold text-gray-900">{orderSummary.scrapOrders}</p>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-gray-500 bg-gray-50 mt-1">
+                {orderSummary.scrapOrders > 0 ? `${orderSummary.scrapOrders} orders` : "None"}
+              </span>
+            </div>
+          </div>
+        </div>
+        <MetricCard
+          label="Fulfilled orders"
+          value={`${orderSummary.fulfilledOrders}`}
+          trend={orderSummary.fulfilledOrders > 0 ? `${((orderSummary.fulfilledOrders / Math.max(orderSummary.totalOrders, 1)) * 100).toFixed(0)}% fulfilled` : "0%"}
+          trendDirection="up"
+          icon={CheckCircle2}
+          iconColor="text-green-500"
+        />
       </div>
+
+      {/* Alerts Modal */}
+      {alertsModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setAlertsModalOpen(false); }}
+          style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                <span className="font-semibold text-gray-900">Order Alerts</span>
+                <span className="text-xs font-medium text-white bg-orange-400 rounded-full px-2 py-0.5">{orderAlerts.length}</span>
+              </div>
+              <button onClick={() => setAlertsModalOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {orderAlerts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <CheckCircle2 className="w-8 h-8 mb-2 text-green-400" />
+                <p className="text-sm">No alerts — all orders look good!</p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto divide-y divide-gray-100">
+                {orderAlerts.map((alert) => (
+                  <button
+                    key={`${alert.id}-${alert.message}`}
+                    onClick={() => { setAlertsModalOpen(false); openDetail(alert.id); }}
+                    className="w-full flex items-start gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <span className={`mt-1 flex-shrink-0 w-2.5 h-2.5 rounded-full ${alert.severity === "red" ? "bg-red-500" : alert.severity === "orange" ? "bg-orange-400" : "bg-yellow-400"
+                      }`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">{alert.soNumber}</span>
+                        <span className="text-xs text-gray-400">{alert.customer}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{alert.message}</p>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1 -rotate-90" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-400">
+              Click any alert to open the order detail
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Card>
+        <div className="px-6 pt-5 pb-0">
+          <div className="flex items-center justify-between mb-4">
+            {/* Status Filter Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {statusFilterTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveFilter(tab.key)}
+                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${activeFilter === tab.key
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                    }`}
+                >
+                  {tab.label} ({statusCounts[tab.key] ?? 0})
+                </button>
+              ))}
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 ml-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search orders..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent w-48"
+                />
+              </div>
+              <button className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors">
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <CardBody className="pt-0">
+          <div className="max-h-[600px] overflow-y-auto">
+            <DataTable
+              columns={orderTableColumns}
+              rows={buildOrderRows(
+                [...filteredOrders]
+                  .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+              )}
+              emptyLabel={loading ? "Loading orders..." : "No orders found."}
+            />
+          </div>
+          <p className="px-2 py-2 text-xs text-text-muted text-center border-t border-gray-100">
+            {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}
+          </p>
+        </CardBody>
+      </Card>
 
       <Modal
         open={Boolean(detail)}
@@ -1228,6 +1658,26 @@ export default function SalesOrdersPage() {
                   </p>
                   {detail.notes ? <p>{detail.notes}</p> : null}
                 </div>
+                {(detail.status === "CONFIRMED") && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Fulfil this order</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => updateStatus(detail, "production")}>
+                        Start Production
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => skipProduction(detail.id)}
+                      >
+                        Use Finished Stock
+                      </Button>
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      <strong>Use Finished Stock</strong> skips production and deducts the required qty directly from your finished goods inventory.
+                    </p>
+                  </div>
+                )}
                 {detail.status === "DISPATCH" ? (
                   <div className="mt-4">
                     <Button
@@ -1469,75 +1919,75 @@ export default function SalesOrdersPage() {
                   </div>
                 </CardHeader>
                 <CardBody>
-                <div className="mb-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Raw Availability (Free vs Reserved)</p>
-                  <div className="mt-3">
-                    <DataTable
-                      columns={[
-                        { key: "sku", label: "Raw SKU" },
-                        { key: "total", label: "Total", align: "right" },
-                        { key: "reserved", label: "Reserved", align: "right" },
-                        { key: "free", label: "Free", align: "right" },
-                        { key: "short", label: "Shortage", align: "right" }
-                      ]}
-                      rows={detail.availability.raw.map((raw) => ({
-                        sku: `${raw.rawSkuCode} · ${raw.rawSkuName}`,
-                        total: `${raw.onHandTotal} ${raw.unit}`,
-                        reserved: `${raw.reservedQty} ${raw.unit}`,
-                        free: `${raw.onHandQty} ${raw.unit}`,
-                        short: `${raw.shortageQty} ${raw.unit}`
-                      }))}
-                      emptyLabel="No raw availability data."
-                    />
+                  <div className="mb-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Raw Availability (Free vs Reserved)</p>
+                    <div className="mt-3">
+                      <DataTable
+                        columns={[
+                          { key: "sku", label: "Raw SKU" },
+                          { key: "total", label: "Total", align: "right" },
+                          { key: "reserved", label: "Reserved", align: "right" },
+                          { key: "free", label: "Free", align: "right" },
+                          { key: "short", label: "Shortage", align: "right" }
+                        ]}
+                        rows={detail.availability.raw.map((raw) => ({
+                          sku: `${raw.rawSkuCode} · ${raw.rawSkuName}`,
+                          total: `${raw.onHandTotal} ${raw.unit}`,
+                          reserved: `${raw.reservedQty} ${raw.unit}`,
+                          free: `${raw.onHandQty} ${raw.unit}`,
+                          short: `${raw.shortageQty} ${raw.unit}`
+                        }))}
+                        emptyLabel="No raw availability data."
+                      />
+                    </div>
                   </div>
-                </div>
-                {detail.procurementPlan.vendorPlans.length ? (
-                  <div className="space-y-4">
-                    {detail.procurementPlan.vendorPlans.map((plan) => (
-                      <div key={plan.vendorId} className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold">{plan.vendorCode} · {plan.vendorName}</p>
-                            <p className="text-xs text-text-muted">Draft PO value ₹{plan.totalValue.toFixed(2)}</p>
+                  {detail.procurementPlan.vendorPlans.length ? (
+                    <div className="space-y-4">
+                      {detail.procurementPlan.vendorPlans.map((plan) => (
+                        <div key={plan.vendorId} className="rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold">{plan.vendorCode} · {plan.vendorName}</p>
+                              <p className="text-xs text-text-muted">Draft PO value ₹{plan.totalValue.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <DataTable
+                              columns={[
+                                { key: "sku", label: "Raw SKU" },
+                                { key: "qty", label: "Shortage", align: "right" },
+                                { key: "price", label: "Unit Price", align: "right" },
+                                { key: "value", label: "Value", align: "right" }
+                              ]}
+                              rows={plan.lines.map((line) => ({
+                                sku: `${line.rawSkuCode} · ${line.rawSkuName}`,
+                                qty: `${line.shortageQty} ${line.unit}`,
+                                price: line.unitPrice ? line.unitPrice.toFixed(2) : "—",
+                                value: (line.shortageQty * line.unitPrice).toFixed(2)
+                              }))}
+                              emptyLabel="No items for this vendor."
+                            />
                           </div>
                         </div>
-                        <div className="mt-3">
-                          <DataTable
-                            columns={[
-                              { key: "sku", label: "Raw SKU" },
-                              { key: "qty", label: "Shortage", align: "right" },
-                              { key: "price", label: "Unit Price", align: "right" },
-                              { key: "value", label: "Value", align: "right" }
-                            ]}
-                            rows={plan.lines.map((line) => ({
-                              sku: `${line.rawSkuCode} · ${line.rawSkuName}`,
-                              qty: `${line.shortageQty} ${line.unit}`,
-                              price: line.unitPrice ? line.unitPrice.toFixed(2) : "—",
-                              value: (line.shortageQty * line.unitPrice).toFixed(2)
-                            }))}
-                            emptyLabel="No items for this vendor."
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/60 bg-bg-subtle/60 p-4 text-sm text-text-muted">
-                    No draft PO needed based on current availability.
-                  </div>
-                )}
-                {detail.procurementPlan.skipped.length ? (
-                  <div className="mt-4 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Skipped Items</p>
-                    <ul className="mt-3 space-y-2 text-sm text-text-muted">
-                      {detail.procurementPlan.skipped.map((item) => (
-                        <li key={item.rawSkuId}>
-                          {item.rawSkuCode} · {item.rawSkuName} — {item.reason}
-                        </li>
                       ))}
-                    </ul>
-                  </div>
-                ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border/60 bg-bg-subtle/60 p-4 text-sm text-text-muted">
+                      No draft PO needed based on current availability.
+                    </div>
+                  )}
+                  {detail.procurementPlan.skipped.length ? (
+                    <div className="mt-4 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Skipped Items</p>
+                      <ul className="mt-3 space-y-2 text-sm text-text-muted">
+                        {detail.procurementPlan.skipped.map((item) => (
+                          <li key={item.rawSkuId}>
+                            {item.rawSkuCode} · {item.rawSkuName} — {item.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </CardBody>
               </Card>
             </div>
@@ -1653,164 +2103,231 @@ export default function SalesOrdersPage() {
 
             <div ref={deliveriesRef}>
               <Card>
-              <CardHeader>
-                <CardTitle>Deliveries</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <DataTable
-                  columns={[
-                    { key: "date", label: "Date" },
-                    { key: "sku", label: "SKU" },
-                    { key: "qty", label: "Qty", align: "right" },
-                    { key: "packaging", label: "Packaging", align: "right" },
-                    { key: "notes", label: "Notes" },
-                    { key: "actions", label: "" }
-                  ]}
-                  rows={detail.deliveries.map((delivery) => ({
-                    date: formatDate(delivery.deliveryDate),
-                    sku: `${delivery.line.sku.code} · ${delivery.line.sku.name}`,
-                    qty: `${delivery.quantity} ${delivery.line.sku.unit}`,
-                    packaging: delivery.packagingCost ? delivery.packagingCost.toFixed(2) : "—",
-                    notes: delivery.notes ?? "—",
-                    actions: detail.invoices.some((invoice) => invoice.deliveryId === delivery.id) ? (
-                      "Invoiced"
-                    ) : (
-                      <Button variant="ghost" onClick={() => createInvoiceForDelivery(delivery.id)}>
-                        Create Invoice
-                      </Button>
-                    )
-                  }))}
-                  emptyLabel="No deliveries recorded yet."
-                />
-                {deliveryLines.length ? (
-                  <div className="mt-6 space-y-4">
-                    <p className="text-sm font-medium text-text">Record Delivery</p>
-                    <div className="space-y-3">
-                      {deliveryLines.map((line, index) => (
-                        <div
-                          key={line.lineId}
-                          className="grid gap-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]"
-                        >
-                          <div>
-                            <p className="text-sm font-medium">{line.sku.code} · {line.sku.name}</p>
-                            <p className="text-xs text-text-muted">Open: {line.openQty} {line.sku.unit}</p>
-                          </div>
-                          <Input
-                            label="Qty"
-                            type="number"
-                            value={line.qty}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setDeliveryLines((prev) =>
-                                prev.map((item, idx) => (idx === index ? { ...item, qty: value } : item))
-                              );
-                            }}
-                          />
-                          <Input
-                            label="Packaging Cost"
-                            type="number"
-                            value={line.packagingCost}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setDeliveryLines((prev) =>
-                                prev.map((item, idx) => (idx === index ? { ...item, packagingCost: value } : item))
-                              );
-                            }}
-                          />
-                          <Input
-                            label="Delivery Date"
-                            type="date"
-                            value={line.deliveryDate}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setDeliveryLines((prev) =>
-                                prev.map((item, idx) => (idx === index ? { ...item, deliveryDate: value } : item))
-                              );
-                            }}
-                          />
-                          <Input
-                            label="Notes"
-                            value={line.notes}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setDeliveryLines((prev) =>
-                                prev.map((item, idx) => (idx === index ? { ...item, notes: value } : item))
-                              );
-                            }}
-                          />
+                <CardHeader>
+                  <CardTitle>Deliveries</CardTitle>
+                </CardHeader>
+                <CardBody>
+                  <DataTable
+                    columns={[
+                      { key: "date", label: "Date" },
+                      { key: "sku", label: "SKU" },
+                      { key: "qty", label: "Qty", align: "right" },
+                      { key: "packaging", label: "Packaging", align: "right" },
+                      { key: "notes", label: "Notes" },
+                      { key: "actions", label: "" }
+                    ]}
+                    rows={detail.deliveries.map((delivery) => ({
+                      date: formatDate(delivery.deliveryDate),
+                      sku: `${delivery.line.sku.code} · ${delivery.line.sku.name}`,
+                      qty: `${delivery.quantity} ${delivery.line.sku.unit}`,
+                      packaging: delivery.packagingCost ? delivery.packagingCost.toFixed(2) : "—",
+                      notes: delivery.notes ?? "—",
+                      actions: (
+                        <div className="flex items-center gap-1">
+                          {detail.invoices.some((invoice) => invoice.deliveryId === delivery.id) ? (
+                            <span className="text-xs text-text-muted">Invoiced</span>
+                          ) : (
+                            <Button variant="ghost" onClick={() => createInvoiceForDelivery(delivery.id)}>
+                              Create Invoice
+                            </Button>
+                          )}
+                          <Button variant="ghost" onClick={() => downloadPackingSlip(detail.id, delivery.id)}>
+                            Packing Slip
+                          </Button>
                         </div>
-                      ))}
+                      )
+                    }))}
+                    emptyLabel="No deliveries recorded yet."
+                  />
+                  {deliveryLines.length ? (
+                    <div className="mt-6 space-y-4">
+                      <p className="text-sm font-medium text-text">Record Delivery</p>
+                      <div className="space-y-3">
+                        {deliveryLines.map((line, index) => (
+                          <div
+                            key={line.lineId}
+                            className="grid gap-3 rounded-2xl border border-border/60 bg-bg-subtle/70 p-4 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]"
+                          >
+                            <div>
+                              <p className="text-sm font-medium">{line.sku.code} · {line.sku.name}</p>
+                              <p className="text-xs text-text-muted">Open: {line.openQty} {line.sku.unit}</p>
+                            </div>
+                            <Input
+                              label="Qty"
+                              type="number"
+                              value={line.qty}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setDeliveryLines((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, qty: value } : item))
+                                );
+                              }}
+                            />
+                            <Input
+                              label="Packaging Cost"
+                              type="number"
+                              value={line.packagingCost}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setDeliveryLines((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, packagingCost: value } : item))
+                                );
+                              }}
+                            />
+                            <Input
+                              label="Delivery Date"
+                              type="date"
+                              value={line.deliveryDate}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setDeliveryLines((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, deliveryDate: value } : item))
+                                );
+                              }}
+                            />
+                            <Input
+                              label="Notes"
+                              value={line.notes}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setDeliveryLines((prev) =>
+                                  prev.map((item, idx) => (idx === index ? { ...item, notes: value } : item))
+                                );
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-text-muted">
+                        <input
+                          type="checkbox"
+                          checked={includePackagingInInvoice}
+                          onChange={(event) => setIncludePackagingInInvoice(event.target.checked)}
+                        />
+                        Include logistics/packaging cost in invoice PDF
+                      </label>
+                      {!canPrintInvoice && deliveryLinesWithQty.length ? (
+                        <p className="text-xs text-text-muted">
+                          Add delivery date and delivery cost to post delivery.
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-3">
+                        <Button onClick={() => submitDeliveries()} disabled={!canPrintInvoice}>
+                          Post Delivery
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          disabled={!canPrintInvoice}
+                          onClick={() => submitDeliveries(true)}
+                        >
+                          Post Delivery + Print Invoice
+                        </Button>
+                      </div>
                     </div>
-                    <label className="flex items-center gap-2 text-xs text-text-muted">
-                      <input
-                        type="checkbox"
-                        checked={includePackagingInInvoice}
-                        onChange={(event) => setIncludePackagingInInvoice(event.target.checked)}
-                      />
-                      Include logistics/packaging cost in invoice PDF
-                    </label>
-                    {!canPrintInvoice && deliveryLinesWithQty.length ? (
-                      <p className="text-xs text-text-muted">
-                        Add delivery date and delivery cost to post delivery.
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap gap-3">
-                      <Button onClick={() => submitDeliveries()} disabled={!canPrintInvoice}>
-                        Post Delivery
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        disabled={!canPrintInvoice}
-                        onClick={() => submitDeliveries(true)}
-                      >
-                        Post Delivery + Print Invoice
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </CardBody>
+                  ) : null}
+                </CardBody>
               </Card>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>Invoices</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <CardTitle>Invoices</CardTitle>
+                  {(() => {
+                    // Show consolidated invoice button if there are un-invoiced delivered quantities
+                    const invoicedQtyByLine = new Map<string, number>();
+                    for (const inv of detail.invoices) {
+                      for (const line of inv.lines) {
+                        invoicedQtyByLine.set(line.soLineId, (invoicedQtyByLine.get(line.soLineId) ?? 0) + line.quantity);
+                      }
+                    }
+                    const hasUninvoiced = detail.lines.some((line) => {
+                      const delivered = line.deliveredQty ?? 0;
+                      const invoiced = invoicedQtyByLine.get(line.id) ?? 0;
+                      return delivered > invoiced;
+                    });
+                    return hasUninvoiced ? (
+                      <Button variant="secondary" onClick={createConsolidatedInvoice}>
+                        Create Consolidated Invoice
+                      </Button>
+                    ) : null;
+                  })()}
+                </div>
               </CardHeader>
               <CardBody>
-                <DataTable
-                  columns={[
-                    { key: "invoice", label: "Invoice" },
-                    { key: "date", label: "Date" },
-                    { key: "due", label: "Due" },
-                    { key: "delivery", label: "Delivery" },
-                    { key: "lines", label: "Lines", align: "right" },
-                    { key: "balance", label: "Balance", align: "right" },
-                    { key: "packaging", label: "Packaging", align: "right" },
-                    { key: "value", label: "Value", align: "right" },
-                    { key: "status", label: "Status" },
-                    { key: "actions", label: "" }
-                  ]}
-                  rows={detail.invoices.map((invoice) => {
-                    const { total, balance } = computeInvoiceTotals(invoice);
-                    return {
-                      invoice: invoice.invoiceNumber ?? "—",
-                      date: formatDate(invoice.invoiceDate),
-                      due: formatDate(invoice.dueDate),
-                      delivery: invoice.deliveryId ? "Delivery-linked" : "Additional charge",
-                      lines: invoice.lines.length,
-                      balance: balance.toFixed(2),
-                      packaging: invoice.delivery?.packagingCost ? invoice.delivery.packagingCost.toFixed(2) : "—",
-                      value: total.toFixed(2),
-                      status: invoice.status,
-                      actions: (
-                        <Button variant="ghost" onClick={() => downloadInvoicePdf(invoice.id)}>
-                          Download PDF
-                        </Button>
-                      )
-                    };
-                  })}
-                  emptyLabel="No invoices yet."
-                />
+                {detail.invoices.length === 0 ? (
+                  <p className="text-sm text-text-muted py-3">No invoices yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {detail.invoices.map((invoice, idx) => {
+                      const { total, balance } = computeInvoiceTotals(invoice);
+                      const isPartial = detail.invoices.length > 1 && idx < detail.invoices.length - 1;
+                      return (
+                        <div
+                          key={invoice.id}
+                          className="rounded-2xl border border-border/60 bg-bg-subtle/60 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-text">
+                                  {invoice.invoiceNumber ?? "—"}
+                                </p>
+                                <p className="text-xs text-text-muted mt-0.5">
+                                  {formatDate(invoice.invoiceDate)}
+                                  {invoice.dueDate ? ` · Due ${formatDate(invoice.dueDate)}` : ""}
+                                </p>
+                              </div>
+                              {isPartial && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                  Partial
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${invoice.status === "PAID"
+                                  ? "bg-green-50 text-green-700 border border-green-200"
+                                  : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                                }`}>
+                                {invoice.status}
+                              </span>
+                              <Button variant="ghost" onClick={() => downloadInvoicePdf(invoice.id)}>
+                                PDF
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Items dispatched in this invoice */}
+                          <div className="mt-3 space-y-1">
+                            {invoice.lines.map((line) => (
+                              <div key={line.id} className="flex items-center justify-between text-sm">
+                                <span className="text-text">
+                                  {line.sku ? `${line.sku.code} · ${line.sku.name}` : line.skuId}
+                                </span>
+                                <span className="text-text-muted text-xs">
+                                  {line.quantity}{line.sku ? ` ${line.sku.unit}` : ""}
+                                  {" · "}
+                                  {formatCurrency(line.quantity * line.unitPrice)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Totals row */}
+                          <div className="mt-3 pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
+                            <span>Total: <strong className="text-text">{formatCurrency(total)}</strong></span>
+                            {balance > 0 && (
+                              <span className="text-yellow-700">Balance due: {formatCurrency(balance)}</span>
+                            )}
+                            {invoice.delivery?.packagingCost ? (
+                              <span>Packaging: {formatCurrency(invoice.delivery.packagingCost)}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardBody>
             </Card>
 

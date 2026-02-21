@@ -11,15 +11,17 @@ function lineNetTotal(line: { quantity: number; unitPrice: number; discountPct?:
   return line.quantity * discounted * (1 + tax / 100);
 }
 
-async function buildInvoiceNumber(prisma: ReturnType<typeof getTenantPrisma> extends Promise<infer T> ? T : never, companyId: string, at: Date) {
-  const yy = String(at.getFullYear()).slice(-2);
-  const mm = String(at.getMonth() + 1).padStart(2, "0");
-  const prefix = `INV-${yy}${mm}`;
-  const count = await prisma!.salesInvoice.count({
-    where: { companyId, invoiceNumber: { startsWith: prefix } }
-  });
-  const seq = String(count + 1).padStart(3, "0");
-  return `${prefix}-${seq}`;
+async function buildInvoiceNumber(
+  prisma: ReturnType<typeof getTenantPrisma> extends Promise<infer T> ? T : never,
+  companyId: string,
+  salesOrderId: string,
+  soNumber: string | null | undefined
+) {
+  // Count invoices already on this specific order to get sub-sequence number
+  const count = await prisma!.salesInvoice.count({ where: { companyId, salesOrderId } });
+  const seq = count + 1;
+  const base = soNumber ?? salesOrderId.slice(-8).toUpperCase();
+  return `${base}/${seq}`;
 }
 
 export async function POST(_: Request, { params }: { params: { id: string; deliveryId: string } }) {
@@ -59,7 +61,12 @@ export async function POST(_: Request, { params }: { params: { id: string; deliv
   const invoiceDate = new Date();
   const creditDays = delivery.salesOrder.creditDays ?? delivery.salesOrder.customer?.creditDays ?? 0;
   const dueDate = creditDays > 0 ? new Date(invoiceDate.getTime() + creditDays * 86400000) : null;
-  const invoiceNumber = await buildInvoiceNumber(prisma, companyId, invoiceDate);
+  const invoiceNumber = await buildInvoiceNumber(
+    prisma,
+    companyId,
+    delivery.salesOrderId,
+    delivery.salesOrder.soNumber
+  );
   const lineTotal = lineNetTotal({
     quantity: delivery.quantity,
     unitPrice: orderLine.unitPrice,

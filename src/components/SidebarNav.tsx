@@ -4,6 +4,32 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navItems } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Truck,
+  PackageCheck,
+  Factory,
+  Warehouse,
+  BarChart3,
+  FileText,
+  History,
+  Settings,
+  type LucideIcon
+} from "lucide-react";
+
+const iconMap: Record<string, LucideIcon> = {
+  LayoutDashboard,
+  ShoppingCart,
+  Truck,
+  PackageCheck,
+  Factory,
+  Warehouse,
+  BarChart3,
+  FileText,
+  History,
+  Settings
+};
 
 type SidebarNavProps = {
   permissions: string[];
@@ -22,19 +48,24 @@ export function SidebarNav({ permissions, isAdmin }: SidebarNavProps) {
     <nav className="flex flex-col gap-2">
       {visibleItems.map((item) => {
         const isActive = pathname === item.href;
+        const Icon = iconMap[item.icon] || LayoutDashboard;
+
         return (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-xl border border-transparent px-4 py-3 transition",
+              "flex items-center gap-4 rounded-xl px-4 py-3 transition-all duration-200 overflow-hidden whitespace-nowrap",
               isActive
-                ? "bg-accent/20 text-text border-accent/40"
-                : "text-text-muted hover:bg-surface/70 hover:text-text"
+                ? "bg-accent text-white shadow-md shadow-accent/25"
+                : "text-sidebar-muted hover:bg-white/5 hover:text-white"
             )}
           >
-            <div className="text-sm font-medium">{item.label}</div>
-            <div className="mt-1 text-xs text-text-muted">{item.description}</div>
+            <Icon className="h-5 w-5 min-w-[20px]" />
+            <div className="flex flex-col opacity-0 w-0 lg:group-hover:opacity-100 lg:group-hover:w-auto transition-all duration-300">
+              <div className="text-sm font-semibold">{item.label}</div>
+              {/* Description might be too much for the hover menu, maybe hide it or keep it subtle? User asked for icons and expand. Let's keep label distinct. */}
+            </div>
           </Link>
         );
       })}

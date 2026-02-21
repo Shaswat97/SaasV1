@@ -15,7 +15,7 @@ export type TabsProps = {
   defaultValue?: string;
 };
 
-export function Tabs({ items, defaultValue }: TabsProps) {
+export function Tabs({ items = [], defaultValue }: TabsProps) {
   const [active, setActive] = useState(defaultValue ?? items[0]?.value ?? "");
   const activeTab = items.find((item) => item.value === active) ?? items[0];
 

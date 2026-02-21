@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardBody, CardDescription, CardHeader, CardTitle } from "@/components/Card";
 import { DataTable } from "@/components/DataTable";
-import { Input } from "@/components/Input";
 import { SectionHeader } from "@/components/SectionHeader";
 import { apiGet } from "@/lib/api-client";
+import { DateFilter, getPresetRange } from "@/components/DateFilter";
+import type { DateRange } from "@/components/DateFilter";
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -142,12 +143,9 @@ type ReportData = {
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fromDate, setFromDate] = useState(() => {
-    const base = new Date();
-    base.setDate(base.getDate() - 29);
-    return base.toISOString().slice(0, 10);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateRange, setDateRange] = useState<DateRange>(() => getPresetRange("current_month"));
+  const fromDate = dateRange.from.toISOString().slice(0, 10);
+  const toDate = dateRange.to.toISOString().slice(0, 10);
 
   useEffect(() => {
     const load = async () => {
@@ -179,98 +177,95 @@ export default function ReportsPage() {
         title="Reports"
         subtitle="Sales, production, inventory, procurement and finance performance."
         actions={
-          <div className="space-y-2">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input label="From" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-              <Input label="To" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-            </div>
+          <div className="flex items-center gap-3">
+            <DateFilter
+              value={dateRange}
+              onChange={(range) => setDateRange(range)}
+              defaultPreset="current_month"
+            />
             <Link
               href="/reports/documents"
               className="inline-flex items-center rounded-full bg-surface-2/80 px-4 py-2 text-sm font-medium text-text hover:bg-surface-2"
             >
-              Open Documents Archive
+              Documents Archive
             </Link>
           </div>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Revenue</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-3xl font-semibold text-text">{data ? currency.format(data.overview.totalRevenue) : "—"}</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Inventory Value</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-3xl font-semibold text-text">{data ? currency.format(data.overview.inventoryValue) : "—"}</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Receivables</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-3xl font-semibold text-text">{data ? currency.format(data.overview.totalReceivable) : "—"}</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Payables</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-3xl font-semibold text-text">{data ? currency.format(data.overview.totalPayable) : "—"}</p>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Avg OEE</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-3xl font-semibold text-text">{data ? `${number.format(data.overview.avgOee)}%` : "—"}</p>
-          </CardBody>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="rounded-2xl border border-border/60 bg-white p-5 flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Total Revenue</span>
+          <p className="text-2xl font-bold text-green-600">{data ? currency.format(data.overview.totalRevenue) : "—"}</p>
+          <div className="h-1 w-12 rounded-full bg-green-200 mt-1" />
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-white p-5 flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Inventory Value</span>
+          <p className="text-2xl font-bold text-blue-600">{data ? currency.format(data.overview.inventoryValue) : "—"}</p>
+          <div className="h-1 w-12 rounded-full bg-blue-200 mt-1" />
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-white p-5 flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Receivables</span>
+          <p className="text-2xl font-bold text-orange-600">{data ? currency.format(data.overview.totalReceivable) : "—"}</p>
+          <div className="h-1 w-12 rounded-full bg-orange-200 mt-1" />
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-white p-5 flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Payables</span>
+          <p className="text-2xl font-bold text-red-600">{data ? currency.format(data.overview.totalPayable) : "—"}</p>
+          <div className="h-1 w-12 rounded-full bg-red-200 mt-1" />
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-white p-5 flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Avg OEE</span>
+          <p className={`text-2xl font-bold ${(data?.overview.avgOee ?? 0) >= 75 ? "text-green-600" : (data?.overview.avgOee ?? 0) >= 50 ? "text-yellow-600" : "text-red-600"}`}>{data ? `${number.format(data.overview.avgOee)}%` : "—"}</p>
+          <div className="h-1 w-12 rounded-full bg-accent/30 mt-1" />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Sales by Customer</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "customer", label: "Customer" },
-                { key: "qty", label: "Qty", align: "right" },
-                { key: "value", label: "Revenue", align: "right" }
-              ]}
-              rows={topCustomers.map((item) => ({
-                customer: item.customer,
-                qty: number.format(item.qty),
-                value: currency.format(item.value)
-              }))}
-              emptyLabel={loading ? "Loading..." : "No customer sales data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text">Sales by Customer</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">{topCustomers.length}</span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "customer", label: "Customer" },
+                  { key: "qty", label: "Qty", align: "right" as const },
+                  { key: "value", label: "Revenue", align: "right" as const }
+                ]}
+                rows={topCustomers.map((item, idx) => ({
+                  customer: (
+                    <div className="flex items-center gap-2">
+                      <span className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white ${idx === 0 ? "bg-yellow-500" : idx === 1 ? "bg-gray-400" : idx === 2 ? "bg-orange-400" : "bg-gray-200 text-gray-600"
+                        }`}>{idx + 1}</span>
+                      <span className="font-medium">{item.customer}</span>
+                    </div>
+                  ),
+                  qty: <span className="font-medium">{number.format(item.qty)}</span>,
+                  value: <span className="font-semibold text-green-600">{currency.format(item.value)}</span>
+                }))}
+                emptyLabel={loading ? "Loading..." : "No customer sales data."}
+              />
+            </div>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Receivables vs Payables (Range)</CardTitle>
-          </CardHeader>
-          <CardBody>
+          <div className="px-6 pt-5 pb-0">
+            <span className="text-sm font-semibold text-text">Receivables vs Payables</span>
+          </div>
+          <CardBody className="pt-3">
             <DataTable
               columns={[
                 { key: "metric", label: "Metric" },
-                { key: "value", label: "Value", align: "right" }
+                { key: "value", label: "Value", align: "right" as const }
               ]}
               rows={[
-                { metric: "Collections in range", value: currency.format(data?.finance.collectionsInRange ?? 0) },
-                { metric: "Vendor payments in range", value: currency.format(data?.finance.vendorPaymentsInRange ?? 0) }
+                { metric: <span className="font-medium">Collections in range</span>, value: <span className="font-semibold text-green-600">{currency.format(data?.finance.collectionsInRange ?? 0)}</span> },
+                { metric: <span className="font-medium">Vendor payments in range</span>, value: <span className="font-semibold text-red-600">{currency.format(data?.finance.vendorPaymentsInRange ?? 0)}</span> }
               ]}
             />
           </CardBody>
@@ -278,151 +273,241 @@ export default function ReportsPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Best Performing SKUs</CardTitle>
-          <CardDescription>Revenue and contribution margin by SKU.</CardDescription>
-        </CardHeader>
-        <CardBody>
-          <DataTable
-            columns={[
-              { key: "sku", label: "SKU" },
-              { key: "qty", label: "Qty", align: "right" },
-              { key: "revenue", label: "Revenue", align: "right" },
-              { key: "margin", label: "Margin", align: "right" }
-            ]}
-            rows={topSkuSales.map((item) => ({
-              sku: `${item.code} · ${item.name}`,
-              qty: `${number.format(item.qty)} ${item.unit}`,
-              revenue: currency.format(item.revenue),
-              margin: `${currency.format(item.margin)} (${number.format(item.marginPct)}%)`
-            }))}
-            emptyLabel={loading ? "Loading..." : "No SKU sales data."}
-          />
+        <div className="px-6 pt-5 pb-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-text">Best Performing SKUs</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">{topSkuSales.length}</span>
+          </div>
+          <p className="text-xs text-text-muted mt-1">Revenue and contribution margin by SKU.</p>
+        </div>
+        <CardBody className="pt-3">
+          <div className="max-h-[500px] overflow-y-auto">
+            <DataTable
+              columns={[
+                { key: "sku", label: "SKU" },
+                { key: "qty", label: "Qty", align: "right" as const },
+                { key: "revenue", label: "Revenue", align: "right" as const },
+                { key: "margin", label: "Margin", align: "right" as const }
+              ]}
+              rows={topSkuSales.map((item) => ({
+                sku: (
+                  <span className="text-sm">
+                    <span className="font-semibold text-accent">{item.code}</span>
+                    <span className="text-text-muted"> · {item.name}</span>
+                  </span>
+                ),
+                qty: <span className="font-medium">{number.format(item.qty)} {item.unit}</span>,
+                revenue: <span className="font-semibold text-green-600">{currency.format(item.revenue)}</span>,
+                margin: (
+                  <span className={`font-medium ${item.marginPct >= 20 ? "text-green-600" : item.marginPct >= 10 ? "text-yellow-600" : "text-red-600"}`}>
+                    {currency.format(item.margin)} ({number.format(item.marginPct)}%)
+                  </span>
+                )
+              }))}
+              emptyLabel={loading ? "Loading..." : "No SKU sales data."}
+            />
+          </div>
         </CardBody>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Order Profitability</CardTitle>
-          <CardDescription>Sales order level margin after expected/actual raw cost.</CardDescription>
-        </CardHeader>
-        <CardBody>
-          <DataTable
-            columns={[
-              { key: "so", label: "Order" },
-              { key: "customer", label: "Customer" },
-              { key: "status", label: "Status" },
-              { key: "revenue", label: "Revenue", align: "right" },
-              { key: "cost", label: "Cost Used", align: "right" },
-              { key: "margin", label: "Margin", align: "right" }
-            ]}
-            rows={orderProfitability.map((item) => ({
-              so: item.soNumber,
-              customer: item.customer,
-              status: item.status,
-              revenue: currency.format(item.revenue),
-              cost: currency.format(item.actualCost > 0 ? item.actualCost : item.expectedCost),
-              margin: `${currency.format(item.margin)} (${number.format(item.marginPct)}%)`
-            }))}
-            emptyLabel={loading ? "Loading..." : "No order profitability data."}
-          />
+        <div className="px-6 pt-5 pb-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-text">Order Profitability</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">{orderProfitability.length}</span>
+          </div>
+          <p className="text-xs text-text-muted mt-1">Sales order level margin after expected/actual raw cost.</p>
+        </div>
+        <CardBody className="pt-3">
+          <div className="max-h-[500px] overflow-y-auto">
+            <DataTable
+              columns={[
+                { key: "so", label: "Order" },
+                { key: "customer", label: "Customer" },
+                { key: "status", label: "Status" },
+                { key: "revenue", label: "Revenue", align: "right" as const },
+                { key: "cost", label: "Cost Used", align: "right" as const },
+                { key: "margin", label: "Margin", align: "right" as const }
+              ]}
+              rows={orderProfitability.map((item) => ({
+                so: <span className="font-semibold text-accent">{item.soNumber}</span>,
+                customer: item.customer,
+                status: (
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === "DELIVERED" ? "bg-green-50 text-green-700 border border-green-200" :
+                    item.status === "PRODUCTION" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                      item.status === "CONFIRMED" ? "bg-yellow-50 text-yellow-700 border border-yellow-200" :
+                        item.status === "INVOICED" ? "bg-purple-50 text-purple-700 border border-purple-200" :
+                          "bg-gray-100 text-gray-700 border border-gray-200"
+                    }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${item.status === "DELIVERED" ? "bg-green-500" :
+                      item.status === "PRODUCTION" ? "bg-blue-500" :
+                        item.status === "CONFIRMED" ? "bg-yellow-500" :
+                          item.status === "INVOICED" ? "bg-purple-500" :
+                            "bg-gray-500"
+                      }`} />
+                    {item.status}
+                  </span>
+                ),
+                revenue: <span className="font-semibold text-green-600">{currency.format(item.revenue)}</span>,
+                cost: <span className="font-medium text-red-600">{currency.format(item.actualCost > 0 ? item.actualCost : item.expectedCost)}</span>,
+                margin: (
+                  <span className={`font-semibold ${item.marginPct >= 20 ? "text-green-600" : item.marginPct >= 10 ? "text-yellow-600" : "text-red-600"}`}>
+                    {currency.format(item.margin)} ({number.format(item.marginPct)}%)
+                  </span>
+                )
+              }))}
+              emptyLabel={loading ? "Loading..." : "No order profitability data."}
+            />
+          </div>
         </CardBody>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Machine Efficiency</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "machine", label: "Machine" },
-                { key: "util", label: "Util%", align: "right" },
-                { key: "oee", label: "OEE%", align: "right" },
-                { key: "yield", label: "Yield%", align: "right" },
-                { key: "variance", label: "Material Var%", align: "right" }
-              ]}
-              rows={machineEfficiency.map((row) => ({
-                machine: row.machine,
-                util: number.format(row.utilizationPct),
-                oee: number.format(row.avgOee),
-                yield: number.format(row.yieldPct),
-                variance: number.format(row.materialVariancePct)
-              }))}
-              emptyLabel={loading ? "Loading..." : "No machine data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text">Machine Efficiency</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">{machineEfficiency.length}</span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "machine", label: "Machine" },
+                  { key: "util", label: "Util%", align: "right" as const },
+                  { key: "oee", label: "OEE%", align: "right" as const },
+                  { key: "yield", label: "Yield%", align: "right" as const },
+                  { key: "variance", label: "Material Var%", align: "right" as const }
+                ]}
+                rows={machineEfficiency.map((row) => ({
+                  machine: <span className="font-medium">{row.machine}</span>,
+                  util: (
+                    <span className={`font-medium ${row.utilizationPct >= 80 ? "text-green-600" : row.utilizationPct >= 50 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.utilizationPct)}%
+                    </span>
+                  ),
+                  oee: (
+                    <span className={`font-semibold ${row.avgOee >= 75 ? "text-green-600" : row.avgOee >= 50 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.avgOee)}%
+                    </span>
+                  ),
+                  yield: (
+                    <span className={`font-medium ${row.yieldPct >= 95 ? "text-green-600" : row.yieldPct >= 85 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.yieldPct)}%
+                    </span>
+                  ),
+                  variance: (
+                    <span className={`font-medium ${row.materialVariancePct > 5 ? "text-red-600" : row.materialVariancePct < -5 ? "text-green-600" : "text-text-muted"}`}>
+                      {number.format(row.materialVariancePct)}%
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No machine data."}
+              />
+            </div>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Production Yield by SKU</CardTitle>
-            <CardDescription>
-              Planned: {number.format(data?.production.summary.planned ?? 0)} · Good:{" "}
-              {number.format(data?.production.summary.good ?? 0)} · Yield:{" "}
-              {number.format(data?.production.summary.yieldPct ?? 0)}%
-            </CardDescription>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "sku", label: "SKU" },
-                { key: "good", label: "Good", align: "right" },
-                { key: "reject", label: "Reject", align: "right" },
-                { key: "scrap", label: "Scrap", align: "right" },
-                { key: "yield", label: "Yield%", align: "right" }
-              ]}
-              rows={productionBySku.map((row) => ({
-                sku: `${row.code} · ${row.name}`,
-                good: number.format(row.good),
-                reject: number.format(row.reject),
-                scrap: number.format(row.scrap),
-                yield: number.format(row.yieldPct)
-              }))}
-              emptyLabel={loading ? "Loading..." : "No production by SKU data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <span className="text-sm font-semibold text-text">Production Yield by SKU</span>
+            <div className="flex items-center gap-3 mt-1 text-xs text-text-muted">
+              <span>Planned: <span className="font-medium text-text">{number.format(data?.production.summary.planned ?? 0)}</span></span>
+              <span>Good: <span className="font-medium text-green-600">{number.format(data?.production.summary.good ?? 0)}</span></span>
+              <span>Yield: <span className={`font-medium ${(data?.production.summary.yieldPct ?? 0) >= 95 ? "text-green-600" : "text-yellow-600"}`}>{number.format(data?.production.summary.yieldPct ?? 0)}%</span></span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "sku", label: "SKU" },
+                  { key: "good", label: "Good", align: "right" as const },
+                  { key: "reject", label: "Reject", align: "right" as const },
+                  { key: "scrap", label: "Scrap", align: "right" as const },
+                  { key: "yield", label: "Yield%", align: "right" as const }
+                ]}
+                rows={productionBySku.map((row) => ({
+                  sku: (
+                    <span className="text-sm">
+                      <span className="font-semibold text-accent">{row.code}</span>
+                      <span className="text-text-muted"> · {row.name}</span>
+                    </span>
+                  ),
+                  good: <span className="font-medium text-green-600">{number.format(row.good)}</span>,
+                  reject: <span className={`font-medium ${row.reject > 0 ? "text-red-600" : "text-text-muted"}`}>{number.format(row.reject)}</span>,
+                  scrap: <span className={`font-medium ${row.scrap > 0 ? "text-orange-600" : "text-text-muted"}`}>{number.format(row.scrap)}</span>,
+                  yield: (
+                    <span className={`font-semibold ${row.yieldPct >= 95 ? "text-green-600" : row.yieldPct >= 85 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.yieldPct)}%
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No production by SKU data."}
+              />
+            </div>
           </CardBody>
         </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Inventory Aging & Slow Moving</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "sku", label: "SKU" },
-                { key: "type", label: "Type" },
-                { key: "onHand", label: "On Hand", align: "right" },
-                { key: "value", label: "Value", align: "right" },
-                { key: "idle", label: "Days Since Movement", align: "right" }
-              ]}
-              rows={inventoryBySku.map((row) => ({
-                sku: `${row.code} · ${row.name}`,
-                type: row.skuType,
-                onHand: number.format(row.onHand),
-                value: currency.format(row.value),
-                idle: row.daysSinceMovement == null ? "—" : row.daysSinceMovement
-              }))}
-              emptyLabel={loading ? "Loading..." : "No inventory data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <span className="text-sm font-semibold text-text">Inventory Aging & Slow Moving</span>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "sku", label: "SKU" },
+                  { key: "type", label: "Type" },
+                  { key: "onHand", label: "On Hand", align: "right" as const },
+                  { key: "value", label: "Value", align: "right" as const },
+                  { key: "idle", label: "Days Idle", align: "right" as const }
+                ]}
+                rows={inventoryBySku.map((row) => ({
+                  sku: (
+                    <span className="text-sm">
+                      <span className="font-semibold text-accent">{row.code}</span>
+                      <span className="text-text-muted"> · {row.name}</span>
+                    </span>
+                  ),
+                  type: (
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${row.skuType === "FINISHED" ? "bg-green-50 text-green-700 border border-green-200" :
+                        row.skuType === "RAW" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                          "bg-gray-100 text-gray-700 border border-gray-200"
+                      }`}>{row.skuType}</span>
+                  ),
+                  onHand: <span className="font-medium">{number.format(row.onHand)}</span>,
+                  value: <span className="font-medium text-blue-600">{currency.format(row.value)}</span>,
+                  idle: row.daysSinceMovement == null ? <span className="text-gray-300">—</span> : (
+                    <span className={`font-medium ${row.daysSinceMovement > 90 ? "text-red-600" : row.daysSinceMovement > 30 ? "text-orange-600" : "text-green-600"}`}>
+                      {row.daysSinceMovement}d
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No inventory data."}
+              />
+            </div>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Inventory Value Aging Buckets</CardTitle>
-          </CardHeader>
-          <CardBody>
+          <div className="px-6 pt-5 pb-0">
+            <span className="text-sm font-semibold text-text">Inventory Value Aging Buckets</span>
+          </div>
+          <CardBody className="pt-3">
             <DataTable
               columns={[
                 { key: "bucket", label: "Bucket (days)" },
-                { key: "value", label: "Value", align: "right" }
+                { key: "value", label: "Value", align: "right" as const }
               ]}
-              rows={(data?.inventory.aging ?? []).map((row) => ({
-                bucket: row.bucket,
-                value: currency.format(row.value)
+              rows={(data?.inventory.aging ?? []).map((row, idx) => ({
+                bucket: <span className="font-medium">{row.bucket}</span>,
+                value: (
+                  <span className={`font-semibold ${idx === 0 ? "text-green-600" : idx <= 1 ? "text-yellow-600" : idx <= 2 ? "text-orange-600" : "text-red-600"}`}>
+                    {currency.format(row.value)}
+                  </span>
+                )
               }))}
               emptyLabel={loading ? "Loading..." : "No aging data."}
             />
@@ -432,44 +517,53 @@ export default function ReportsPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Procurement Vendor Performance</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "vendor", label: "Vendor" },
-                { key: "value", label: "PO Value", align: "right" },
-                { key: "received", label: "Received", align: "right" },
-                { key: "pending", label: "Pending", align: "right" },
-                { key: "onTime", label: "On-time %", align: "right" }
-              ]}
-              rows={vendorSummary.map((row) => ({
-                vendor: row.vendor,
-                value: currency.format(row.totalValue),
-                received: row.received,
-                pending: row.pending,
-                onTime: `${number.format(row.onTimePct)}%`
-              }))}
-              emptyLabel={loading ? "Loading..." : "No procurement data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text">Vendor Performance</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">{vendorSummary.length}</span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "vendor", label: "Vendor" },
+                  { key: "value", label: "PO Value", align: "right" as const },
+                  { key: "received", label: "Received", align: "right" as const },
+                  { key: "pending", label: "Pending", align: "right" as const },
+                  { key: "onTime", label: "On-time %", align: "right" as const }
+                ]}
+                rows={vendorSummary.map((row) => ({
+                  vendor: <span className="font-medium">{row.vendor}</span>,
+                  value: <span className="font-semibold text-blue-600">{currency.format(row.totalValue)}</span>,
+                  received: <span className="font-medium text-green-600">{row.received}</span>,
+                  pending: <span className={`font-medium ${row.pending > 0 ? "text-orange-600" : "text-green-600"}`}>{row.pending}</span>,
+                  onTime: (
+                    <span className={`font-semibold ${row.onTimePct >= 90 ? "text-green-600" : row.onTimePct >= 70 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.onTimePct)}%
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No procurement data."}
+              />
+            </div>
           </CardBody>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>Receivable/Payable Aging</CardTitle>
-          </CardHeader>
-          <CardBody>
+          <div className="px-6 pt-5 pb-0">
+            <span className="text-sm font-semibold text-text">Receivable/Payable Aging</span>
+          </div>
+          <CardBody className="pt-3">
             <DataTable
               columns={[
                 { key: "bucket", label: "Bucket" },
-                { key: "recv", label: "Receivable", align: "right" },
-                { key: "pay", label: "Payable", align: "right" }
+                { key: "recv", label: "Receivable", align: "right" as const },
+                { key: "pay", label: "Payable", align: "right" as const }
               ]}
               rows={(data?.finance.receivablesAging ?? []).map((row, idx) => ({
-                bucket: row.bucket,
-                recv: currency.format(row.amount),
-                pay: currency.format(data?.finance.payablesAging[idx]?.amount ?? 0)
+                bucket: <span className="font-medium">{row.bucket}</span>,
+                recv: <span className="font-semibold text-green-600">{currency.format(row.amount)}</span>,
+                pay: <span className="font-semibold text-red-600">{currency.format(data?.finance.payablesAging[idx]?.amount ?? 0)}</span>
               }))}
               emptyLabel={loading ? "Loading..." : "No finance aging data."}
             />
@@ -479,54 +573,98 @@ export default function ReportsPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1.8fr]">
         <Card>
-          <CardHeader>
-            <CardTitle>Employee Performance</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "employee", label: "Employee" },
-                { key: "minutes", label: "Minutes", align: "right" },
-                { key: "expected", label: "Expected", align: "right" },
-                { key: "actual", label: "Actual", align: "right" },
-                { key: "materialVar", label: "Material Var%", align: "right" },
-                { key: "rating", label: "Rating", align: "right" }
-              ]}
-              rows={topEmployees.map((row) => ({
-                employee: `${row.employeeCode} · ${row.employeeName}`,
-                minutes: number.format(row.minutes),
-                expected: number.format(row.expectedUnits),
-                actual: number.format(row.actualUnits),
-                materialVar: number.format(row.materialVariancePct),
-                rating: `${number.format(row.rating)}/10`
-              }))}
-              emptyLabel={loading ? "Loading..." : "No employee performance data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text">Employee Performance</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">{topEmployees.length}</span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "employee", label: "Employee" },
+                  { key: "minutes", label: "Minutes", align: "right" as const },
+                  { key: "expected", label: "Expected", align: "right" as const },
+                  { key: "actual", label: "Actual", align: "right" as const },
+                  { key: "materialVar", label: "Mat Var%", align: "right" as const },
+                  { key: "rating", label: "Rating", align: "right" as const }
+                ]}
+                rows={topEmployees.map((row) => ({
+                  employee: (
+                    <span className="text-sm">
+                      <span className="font-semibold text-accent">{row.employeeCode}</span>
+                      <span className="text-text-muted"> · {row.employeeName}</span>
+                    </span>
+                  ),
+                  minutes: <span className="font-medium">{number.format(row.minutes)}</span>,
+                  expected: <span className="font-medium text-text-muted">{number.format(row.expectedUnits)}</span>,
+                  actual: (
+                    <span className={`font-medium ${row.actualUnits >= row.expectedUnits ? "text-green-600" : "text-red-600"}`}>
+                      {number.format(row.actualUnits)}
+                    </span>
+                  ),
+                  materialVar: (
+                    <span className={`font-medium ${row.materialVariancePct > 5 ? "text-red-600" : row.materialVariancePct < -5 ? "text-green-600" : "text-text-muted"}`}>
+                      {number.format(row.materialVariancePct)}%
+                    </span>
+                  ),
+                  rating: (
+                    <span className={`inline-flex items-center gap-1 font-semibold ${row.rating >= 8 ? "text-green-600" : row.rating >= 5 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.rating)}/10
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No employee performance data."}
+              />
+            </div>
           </CardBody>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Employee Daily Ratings</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <DataTable
-              columns={[
-                { key: "date", label: "Date" },
-                { key: "employee", label: "Employee" },
-                { key: "performance", label: "Performance%", align: "right" },
-                { key: "materialVar", label: "Material Var%", align: "right" },
-                { key: "rating", label: "Rating", align: "right" }
-              ]}
-              rows={dailyRatings.map((row) => ({
-                date: new Date(row.date).toLocaleDateString("en-IN"),
-                employee: `${row.employeeCode} · ${row.employeeName}`,
-                performance: number.format(row.performancePct),
-                materialVar: number.format(row.materialVariancePct),
-                rating: `${number.format(row.rating)}/10`
-              }))}
-              emptyLabel={loading ? "Loading..." : "No daily ratings data."}
-            />
+          <div className="px-6 pt-5 pb-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-text">Employee Daily Ratings</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">{dailyRatings.length}</span>
+            </div>
+          </div>
+          <CardBody className="pt-3">
+            <div className="max-h-[400px] overflow-y-auto">
+              <DataTable
+                columns={[
+                  { key: "date", label: "Date" },
+                  { key: "employee", label: "Employee" },
+                  { key: "performance", label: "Performance%", align: "right" as const },
+                  { key: "materialVar", label: "Mat Var%", align: "right" as const },
+                  { key: "rating", label: "Rating", align: "right" as const }
+                ]}
+                rows={dailyRatings.map((row) => ({
+                  date: <span className="font-medium">{new Date(row.date).toLocaleDateString("en-IN")}</span>,
+                  employee: (
+                    <span className="text-sm">
+                      <span className="font-semibold text-accent">{row.employeeCode}</span>
+                      <span className="text-text-muted"> · {row.employeeName}</span>
+                    </span>
+                  ),
+                  performance: (
+                    <span className={`font-medium ${row.performancePct >= 100 ? "text-green-600" : row.performancePct >= 80 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.performancePct)}%
+                    </span>
+                  ),
+                  materialVar: (
+                    <span className={`font-medium ${row.materialVariancePct > 5 ? "text-red-600" : row.materialVariancePct < -5 ? "text-green-600" : "text-text-muted"}`}>
+                      {number.format(row.materialVariancePct)}%
+                    </span>
+                  ),
+                  rating: (
+                    <span className={`font-semibold ${row.rating >= 8 ? "text-green-600" : row.rating >= 5 ? "text-yellow-600" : "text-red-600"}`}>
+                      {number.format(row.rating)}/10
+                    </span>
+                  )
+                }))}
+                emptyLabel={loading ? "Loading..." : "No daily ratings data."}
+              />
+            </div>
           </CardBody>
         </Card>
       </div>

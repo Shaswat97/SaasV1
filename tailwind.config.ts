@@ -16,7 +16,13 @@ const config: Config = {
         "accent-2": "hsl(var(--accent-2) / <alpha-value>)",
         success: "hsl(var(--success) / <alpha-value>)",
         warning: "hsl(var(--warning) / <alpha-value>)",
-        danger: "hsl(var(--danger) / <alpha-value>)"
+        danger: "hsl(var(--danger) / <alpha-value>)",
+
+        // Sidebar specific
+        sidebar: "hsl(var(--sidebar-bg) / <alpha-value>)",
+        "sidebar-fg": "hsl(var(--sidebar-fg) / <alpha-value>)",
+        "sidebar-muted": "hsl(var(--sidebar-muted) / <alpha-value>)",
+        "sidebar-border": "hsl(var(--sidebar-border) / <alpha-value>)"
       },
       fontFamily: {
         heading: ["var(--font-heading)", "serif"],

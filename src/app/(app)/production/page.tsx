@@ -11,6 +11,17 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { Select } from "@/components/Select";
 import { ToastViewport } from "@/components/ToastViewport";
 import { apiGet, apiSend } from "@/lib/api-client";
+import {
+  AlertCircle,
+  Box,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  MoreHorizontal,
+  Package,
+  Trash2,
+  Users
+} from "lucide-react";
 import { useToast } from "@/lib/use-toast";
 
 const statusBadge: Record<string, { label: string; variant: "neutral" | "info" | "success" | "warning" | "danger" }> = {
@@ -30,7 +41,7 @@ const crewRoleOptions = [
   { value: "HELPER", label: "Helper" }
 ];
 
-type Machine = { id: string; code: string; name: string };
+type Machine = { id: string; code: string; name: string; baseCapacityPerMinute: number };
 
 type Employee = { id: string; code: string; name: string };
 
@@ -255,6 +266,7 @@ export default function ProductionPage() {
   const [boms, setBoms] = useState<Bom[]>([]);
   const [routings, setRoutings] = useState<Routing[]>([]);
   const [backlog, setBacklog] = useState<BacklogLine[]>([]);
+  const [backlogTab, setBacklogTab] = useState("all");
   const [logs, setLogs] = useState<ProductionLog[]>([]);
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1042,139 +1054,298 @@ export default function ProductionPage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Production Backlog</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <DataTable
-                columns={[
-                  { key: "order", label: "Order" },
-                  { key: "customer", label: "Customer" },
-                  { key: "sku", label: "SKU" },
-                  { key: "open", label: "Open Qty", align: "right" },
-                  { key: "status", label: "Status" }
-                ]}
-                rows={backlog.map((line) => ({
-                  order: line.soNumber,
-                  customer: line.customer,
-                  sku: `${line.skuCode} · ${line.skuName}`,
-                  open: `${line.openQty} ${line.unit}`,
-                  status: line.status
-                }))}
-                emptyLabel={loading ? "Loading backlog..." : "No production backlog."}
-              />
+            <div className="px-6 pt-5 pb-0">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-1">
+                  {[
+                    { key: "all", label: "All", filter: () => true },
+                    { key: "QUOTE", label: "Quote", filter: (l: typeof backlog[0]) => l.status === "QUOTE" },
+                    { key: "CONFIRMED", label: "Confirmed", filter: (l: typeof backlog[0]) => l.status === "CONFIRMED" },
+                    { key: "PRODUCTION", label: "Production", filter: (l: typeof backlog[0]) => l.status === "PRODUCTION" },
+                  ].map((tab) => {
+                    const count = tab.key === "all" ? backlog.length : backlog.filter(tab.filter).length;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setBacklogTab(tab.key)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${(backlogTab ?? "all") === tab.key
+                          ? "bg-gray-900 text-white"
+                          : "text-gray-500 hover:bg-gray-100"
+                          }`}
+                      >
+                        {tab.label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <CardBody className="pt-3">
+              <div className="max-h-[600px] overflow-y-auto">
+                <DataTable
+                  columns={[
+                    { key: "order", label: "Order" },
+                    { key: "customer", label: "Customer" },
+                    { key: "sku", label: "SKU" },
+                    { key: "open", label: "Open Qty", align: "right" as const },
+                    { key: "status", label: "Status" }
+                  ]}
+                  rows={backlog
+                    .filter((line) => {
+                      if (!backlogTab || backlogTab === "all") return true;
+                      return line.status === backlogTab;
+                    })
+                    .map((line) => ({
+                      order: <span className="font-semibold text-accent">{line.soNumber}</span>,
+                      customer: line.customer,
+                      sku: (
+                        <span className="text-sm">
+                          <span className="font-medium text-text">{line.skuCode}</span>
+                          <span className="text-text-muted"> · {line.skuName}</span>
+                        </span>
+                      ),
+                      open: (
+                        <span className={`font-medium ${line.openQty > 500 ? "text-red-600" : line.openQty > 100 ? "text-orange-600" : "text-green-600"}`}>
+                          {line.openQty.toLocaleString()} {line.unit}
+                        </span>
+                      ),
+                      status: (
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${line.status === "PRODUCTION" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                          line.status === "CONFIRMED" ? "bg-green-50 text-green-700 border border-green-200" :
+                            line.status === "QUOTE" ? "bg-yellow-50 text-yellow-700 border border-yellow-200" :
+                              "bg-gray-100 text-gray-700 border border-gray-200"
+                          }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${line.status === "PRODUCTION" ? "bg-blue-500" :
+                            line.status === "CONFIRMED" ? "bg-green-500" :
+                              line.status === "QUOTE" ? "bg-yellow-500" :
+                                "bg-gray-500"
+                            }`} />
+                          {line.status === "PRODUCTION" ? "Production" : line.status === "CONFIRMED" ? "Confirmed" : line.status === "QUOTE" ? "Quote" : line.status}
+                        </span>
+                      )
+                    }))}
+                  emptyLabel={loading ? "Loading backlog..." : "No production backlog."}
+                />
+              </div>
+              <p className="px-2 py-2 text-xs text-text-muted text-center border-t border-gray-100">
+                {backlog.filter((line) => (!backlogTab || backlogTab === "all") ? true : line.status === backlogTab).length} item{backlog.filter((line) => (!backlogTab || backlogTab === "all") ? true : line.status === backlogTab).length !== 1 ? "s" : ""}
+              </p>
             </CardBody>
           </Card>
         </div>
       </div>
 
       <Card>
-        <CardHeader>
+        <div className="px-6 pt-5 pb-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>Recent Production Logs</CardTitle>
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-semibold text-text mr-2">Production Logs</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">{logs.length}</span>
+            </div>
             <label className="flex items-center gap-2 text-sm text-text-muted">
               <input
                 type="checkbox"
                 checked={includeCancelled}
                 onChange={(event) => setIncludeCancelled(event.target.checked)}
+                className="rounded"
               />
               Show cancelled
             </label>
           </div>
-        </CardHeader>
-        <CardBody>
-          <DataTable
-            columns={[
-              { key: "date", label: "Date" },
-              { key: "start", label: "Start" },
-              { key: "close", label: "Close" },
-              { key: "purpose", label: "Purpose" },
-              { key: "sku", label: "SKU" },
-              { key: "machine", label: "Machine" },
-              { key: "crew", label: "Crew", align: "right" },
-              { key: "planned", label: "Planned", align: "right" },
-              { key: "good", label: "Good", align: "right" },
-              { key: "scrap", label: "Scrap", align: "right" },
-              { key: "materialVar", label: "Material Var%", align: "right" },
-              { key: "rate", label: "Units/hr", align: "right" },
-              { key: "oee", label: "OEE", align: "right" },
-              { key: "crewTime", label: "Crew Time" },
-              { key: "notes", label: "Notes" },
-              { key: "status", label: "Status" },
-              { key: "actions", label: "" }
-            ]}
-            rows={logs.map((log) => ({
-              date: formatDate(log.startAt),
-              start: formatTime(log.startAt),
-              close: formatTime(log.closeAt),
-              purpose: log.purpose === "ORDER" ? "Order" : "Stock",
-              sku: `${log.finishedSku.code} · ${log.finishedSku.name}`,
-              machine: log.machine.name,
-              crew: log.crewAssignments?.length
-                ? (() => {
-                    const counts = log.crewAssignments.reduce(
-                      (acc, entry) => {
-                        if (entry.role === "OPERATOR") acc.OPERATOR += 1;
-                        else if (entry.role === "SUPERVISOR") acc.SUPERVISOR += 1;
-                        else acc.HELPER += 1;
-                        return acc;
-                      },
-                      { OPERATOR: 0, SUPERVISOR: 0, HELPER: 0 }
-                    );
-                    const parts = [];
-                    if (counts.OPERATOR) parts.push(`Op ${counts.OPERATOR}`);
-                    if (counts.SUPERVISOR) parts.push(`Sup ${counts.SUPERVISOR}`);
-                    if (counts.HELPER) parts.push(`Help ${counts.HELPER}`);
-                    return parts.join(" · ");
-                  })()
-                : "—",
-              planned: `${log.plannedQty} ${log.finishedSku.unit}`,
-              good: log.goodQty ? `${log.goodQty}` : "—",
-              scrap: log.scrapQty || log.rejectQty ? `${log.scrapQty + log.rejectQty}` : "—",
-              materialVar:
-                log.materialVariancePct != null
-                  ? `${log.materialVariancePct.toFixed(1)}%`
-                  : "—",
-              rate: (() => {
-                if (!log.closeAt || !log.goodQty) return "—";
-                const hours = (new Date(log.closeAt).getTime() - new Date(log.startAt).getTime()) / 3600000;
-                if (!hours || hours <= 0) return "—";
-                return (log.goodQty / hours).toFixed(2);
-              })(),
-              oee: log.oeePct ? `${log.oeePct.toFixed(1)}%` : "—",
-              crewTime: log.crewAssignments?.length ? (
-                <div className="text-xs text-text-muted">
-                  {log.crewAssignments.map((entry) => (
-                    <div key={entry.id}>
-                      {entry.employee.name} · {formatDuration(entry.startAt, entry.endAt)}
+        </div>
+        <CardBody className="pt-3">
+          <div className="max-h-[600px] overflow-y-auto">
+            <DataTable
+              columns={[
+                { key: "date", label: "Date" },
+                { key: "start", label: "Start" },
+                { key: "close", label: "Close" },
+                { key: "purpose", label: "Purpose" },
+                { key: "sku", label: "SKU" },
+                { key: "machine", label: "Machine" },
+                { key: "crew", label: "Crew", align: "right" },
+                { key: "planned", label: "Planned", align: "right" },
+                { key: "good", label: "Good", align: "right" },
+                { key: "scrap", label: "Scrap", align: "right" },
+                { key: "variance", label: "Var", align: "right" },
+                { key: "materialVar", label: "Material Var%", align: "right" },
+                { key: "rate", label: "Units/hr", align: "right" },
+                { key: "oee", label: "OEE", align: "right" },
+                { key: "crewTime", label: "Crew Time" },
+                { key: "notes", label: "Notes" },
+                { key: "status", label: "Status" },
+                { key: "actions", label: "" }
+              ]}
+              rows={logs.map((log) => {
+                const routing = routings.find((r) => r.finishedSkuId === log.finishedSku.id);
+                const step = routing?.steps.find((s) => s.machineId === log.machine.id);
+                const capacity = step?.capacityPerMinute ?? log.machine.baseCapacityPerMinute ?? 0;
+                let varianceNode = <span className="text-text-muted">—</span>;
+
+                if (log.closeAt && log.startAt && capacity > 0 && log.plannedQty > 0) {
+                  const actualMinutes = (new Date(log.closeAt).getTime() - new Date(log.startAt).getTime()) / 60000;
+                  const standardMinutes = log.plannedQty / capacity;
+                  const variance = actualMinutes - standardMinutes;
+                  const isDelay = variance > 0;
+                  varianceNode = (
+                    <div className={`flex flex-col items-end ${isDelay ? "text-danger" : "text-success"}`}>
+                      <span className="font-medium">
+                        {isDelay ? "+" : ""}{Math.round(variance)}m
+                      </span>
+                      <span className="text-[10px] text-text-muted/70">
+                        {Math.round(actualMinutes)}m act
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                "—"
-              ),
-              notes: log.notes || log.closeNotes ? (
-                <div className="text-xs text-text-muted">
-                  {log.notes ? <div>Start: {log.notes}</div> : null}
-                  {log.closeNotes ? <div>Close: {log.closeNotes}</div> : null}
-                </div>
-              ) : (
-                "—"
-              ),
-              status: <Badge {...(statusBadge[log.status] ?? statusBadge.OPEN)} />,
-              actions:
-                log.status !== "CANCELLED" ? (
-                  <Button variant="ghost" onClick={() => cancelLog(log.id)}>
-                    Delete
-                  </Button>
-                ) : (
-                  ""
-                )
-            }))}
-            emptyLabel={loading ? "Loading logs..." : "No production logs yet."}
-          />
+                  );
+                }
+
+                const statusConfig = statusBadge[log.status] ?? statusBadge.OPEN;
+                const statusColor =
+                  statusConfig.variant === "success"
+                    ? "bg-success"
+                    : statusConfig.variant === "warning"
+                      ? "bg-warning"
+                      : statusConfig.variant === "danger"
+                        ? "bg-danger"
+                        : "bg-text-muted";
+
+                return {
+                  date: (
+                    <div className="flex flex-col">
+                      <span className="font-medium text-text">{formatDate(log.startAt)}</span>
+                      <span className="text-xs text-text-muted">{formatTime(log.startAt)}</span>
+                    </div>
+                  ),
+                  start: <span className="text-text-muted">{formatTime(log.startAt)}</span>,
+                  close: <span className="text-text-muted">{formatTime(log.closeAt)}</span>,
+                  purpose: (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-bg-subtle px-2.5 py-0.5 text-xs font-medium text-text-muted">
+                      {log.purpose === "ORDER" ? "Order" : "Stock"}
+                    </span>
+                  ),
+                  sku: (
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                        <Package className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-text">{log.finishedSku.code}</span>
+                        <span className="text-xs text-text-muted">{log.finishedSku.name}</span>
+                      </div>
+                    </div>
+                  ),
+                  machine: (
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-subtle text-text-muted/80">
+                        <Box className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-text">{log.machine.name}</span>
+                        <span className="text-xs text-text-muted">{log.machine.code}</span>
+                      </div>
+                    </div>
+                  ),
+                  crew: log.crewAssignments?.length ? (
+                    <div className="flex items-center justify-end gap-1.5" title="Crew Details">
+                      <Users className="h-3.5 w-3.5 text-text-muted" />
+                      <span className="text-sm text-text">
+                        {log.crewAssignments.reduce((acc, c) => acc + (c.role === "OPERATOR" ? 1 : 0), 0)} Ops
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  ),
+                  planned: (
+                    <div className="flex flex-col items-end">
+                      <span className="font-medium text-text">{log.plannedQty}</span>
+                      <span className="text-xs text-text-muted">{log.finishedSku.unit}</span>
+                    </div>
+                  ),
+                  good: (
+                    <div className="flex flex-col items-end">
+                      <span className="font-medium text-text">{log.goodQty ?? "—"}</span>
+                      {log.goodQty ? <span className="text-xs text-success">Good</span> : null}
+                    </div>
+                  ),
+                  scrap: (
+                    <div className="flex flex-col items-end">
+                      <span className="text-text">{log.scrapQty || log.rejectQty ? log.scrapQty + log.rejectQty : "—"}</span>
+                      {log.scrapQty || log.rejectQty ? <span className="text-xs text-danger">Lost</span> : null}
+                    </div>
+                  ),
+                  variance: varianceNode,
+                  materialVar: log.materialVariancePct != null ? (
+                    <span
+                      className={
+                        log.materialVariancePct > 5
+                          ? "font-medium text-danger"
+                          : log.materialVariancePct < -5
+                            ? "font-medium text-success"
+                            : "text-text-muted"
+                      }
+                    >
+                      {log.materialVariancePct.toFixed(1)}%
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  ),
+                  rate: (() => {
+                    if (!log.closeAt || !log.goodQty) return <span className="text-text-muted">—</span>;
+                    const hours = (new Date(log.closeAt).getTime() - new Date(log.startAt).getTime()) / 3600000;
+                    if (!hours || hours <= 0) return <span className="text-text-muted">—</span>;
+                    const rate = log.goodQty / hours;
+                    return (
+                      <div className="flex flex-col items-end">
+                        <span className="font-medium text-text">{rate.toFixed(0)}</span>
+                        <span className="text-xs text-text-muted">u/hr</span>
+                      </div>
+                    );
+                  })(),
+                  oee: log.oeePct ? (
+                    <div className="flex flex-col items-end">
+                      <span className="font-medium text-text">{log.oeePct.toFixed(0)}%</span>
+                    </div>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  ),
+                  crewTime: log.crewAssignments?.length ? (
+                    <div className="max-w-[120px] truncate text-xs text-text-muted">
+                      {log.crewAssignments.map((e) => e.employee.name).join(", ")}
+                    </div>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  ),
+                  notes: log.notes ? (
+                    <div className="max-w-[150px] truncate text-xs text-text-muted" title={log.notes}>
+                      {log.notes}
+                    </div>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  ),
+                  status: (
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
+                      <span className="text-sm font-medium text-text">{statusConfig.label}</span>
+                    </div>
+                  ),
+                  actions:
+                    log.status !== "CANCELLED" ? (
+                      <Button variant="ghost" className="h-8 w-8 p-0 text-text-muted hover:text-danger" onClick={() => cancelLog(log.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      ""
+                    )
+                };
+              })}
+              emptyLabel={loading ? "Loading logs..." : "No production logs yet."}
+            />
+          </div>
+          <p className="px-2 py-2 text-xs text-text-muted text-center border-t border-gray-100">
+            {logs.length} log{logs.length !== 1 ? "s" : ""}
+          </p>
         </CardBody>
       </Card>
-    </div>
+    </div >
   );
 }

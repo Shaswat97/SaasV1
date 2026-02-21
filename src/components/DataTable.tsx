@@ -11,52 +11,59 @@ export type DataTableProps = {
   columns: DataColumn[];
   rows: Array<Record<string, ReactNode>>;
   emptyLabel?: string;
+  className?: string;
 };
 
-export function DataTable({ columns, rows, emptyLabel = "No records yet." }: DataTableProps) {
+export function DataTable({ columns, rows, emptyLabel = "No records yet.", className }: DataTableProps) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-separate border-spacing-y-2">
-        <thead>
-            <tr className="text-left text-xs uppercase tracking-[0.2em] text-text-muted">
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                scope="col"
-                className={cn("px-4 py-2", column.align === "right" && "text-right", column.align === "center" && "text-center")}
-              >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="px-4 py-6 text-sm text-text-muted">
-                {emptyLabel}
-              </td>
+    <div className={cn("rounded-3xl border border-border/40 bg-surface shadow-sm overflow-hidden", className)}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left bg-surface">
+          <thead>
+            <tr className="border-b border-border/50 bg-bg-subtle/30">
+              {columns.map((column) => (
+                <th
+                  key={column.key}
+                  scope="col"
+                  className={cn(
+                    "px-6 py-4 text-xs font-medium uppercase tracking-wider text-text-muted whitespace-nowrap",
+                    column.align === "right" && "text-right",
+                    column.align === "center" && "text-center"
+                  )}
+                >
+                  {column.label}
+                </th>
+              ))}
             </tr>
-          ) : (
-            rows.map((row, index) => (
-              <tr key={index} className="bg-surface/80">
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={cn(
-                      "px-4 py-4 text-sm text-text border-t border-border/40",
-                      column.align === "right" && "text-right",
-                      column.align === "center" && "text-center"
-                    )}
-                  >
-                    {row[column.key]}
-                  </td>
-                ))}
+          </thead>
+          <tbody className="divide-y divide-border/30">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-12 text-center text-sm text-text-muted">
+                  {emptyLabel}
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={index} className="group transition-colors hover:bg-bg-subtle/40">
+                  {columns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={cn(
+                        "px-6 py-4 text-sm text-text align-middle whitespace-nowrap",
+                        column.align === "right" && "text-right",
+                        column.align === "center" && "text-center"
+                      )}
+                    >
+                      {row[column.key]}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

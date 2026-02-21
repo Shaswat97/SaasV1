@@ -14,15 +14,16 @@ function lineNetTotal(line: { quantity: number; unitPrice: number; discountPct?:
   return line.quantity * discounted * (1 + tax / 100);
 }
 
-async function buildInvoiceNumber(prisma: ReturnType<typeof getTenantPrisma> extends Promise<infer T> ? T : never, companyId: string, at: Date) {
-  const yy = String(at.getFullYear()).slice(-2);
-  const mm = String(at.getMonth() + 1).padStart(2, "0");
-  const prefix = `INV-${yy}${mm}`;
-  const count = await prisma!.salesInvoice.count({
-    where: { companyId, invoiceNumber: { startsWith: prefix } }
-  });
-  const seq = String(count + 1).padStart(3, "0");
-  return `${prefix}-${seq}`;
+async function buildInvoiceNumber(
+  prisma: ReturnType<typeof getTenantPrisma> extends Promise<infer T> ? T : never,
+  companyId: string,
+  salesOrderId: string,
+  soNumber: string | null | undefined
+) {
+  const count = await prisma!.salesInvoice.count({ where: { companyId, salesOrderId } });
+  const seq = count + 1;
+  const base = soNumber ?? salesOrderId.slice(-8).toUpperCase();
+  return `${base}/${seq}`;
 }
 
 const invoiceLineSchema = z.object({
@@ -88,7 +89,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const invoiceDate = parsed.data.invoiceDate ? new Date(parsed.data.invoiceDate) : new Date();
-  const invoiceNumber = parsed.data.invoiceNumber ?? (await buildInvoiceNumber(prisma, companyId, invoiceDate));
+  const invoiceNumber = parsed.data.invoiceNumber ?? (await buildInvoiceNumber(prisma, companyId, order.id, order.soNumber));
   const creditDays = order.creditDays ?? order.customer?.creditDays ?? 0;
   const dueDate = creditDays > 0 ? new Date(invoiceDate.getTime() + creditDays * 86400000) : null;
 

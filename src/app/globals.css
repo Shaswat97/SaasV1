@@ -3,19 +3,35 @@
 @tailwind utilities;
 
 :root {
-  --bg: 260 35% 97%;
-  --bg-subtle: 258 38% 94%;
+  /* TaskFlow Inspired Theme */
+  --bg: 220 14% 96%;
+  /* Light Gray Background */
+  --bg-subtle: 220 14% 93%;
   --surface: 0 0% 100%;
-  --surface-2: 257 40% 98%;
-  --border: 255 22% 84%;
-  --text: 255 20% 18%;
-  --text-muted: 255 12% 42%;
-  --accent: 266 60% 60%;
-  --accent-2: 266 55% 72%;
+  /* Pure White Cards */
+  --surface-2: 220 14% 98%;
+
+  --border: 220 13% 91%;
+  /* Subtle Borders */
+
+  --text: 224 20% 18%;
+  /* Dark Gray Text */
+  --text-muted: 220 8% 46%;
+
+  --accent: 262 80% 50%;
+  /* Vibrant Violet */
+  --accent-2: 262 70% 65%;
+
+  --sidebar-bg: 240 25% 10%;
+  /* Dark Navy Sidebar */
+  --sidebar-fg: 0 0% 100%;
+  --sidebar-muted: 240 10% 65%;
+  --sidebar-border: 240 20% 18%;
+
   --success: 158 40% 38%;
   --warning: 32 60% 50%;
   --danger: 350 55% 52%;
-  --ring: 266 60% 60%;
+  --ring: 262 80% 50%;
 }
 
 html[data-theme="dark"] {
@@ -39,18 +55,20 @@ html[data-theme="dark"] {
     border-color: hsl(var(--border) / 0.7);
   }
 
+  html {
+    font-size: 14px;
+    /* Scale down UI to be more information dense */
+  }
+
   body {
     @apply bg-bg text-text font-body;
-    background-image: radial-gradient(circle at 18% 0%, hsl(266 60% 88% / 0.5), transparent 45%),
-      linear-gradient(160deg, hsl(260 35% 97%) 0%, hsl(258 38% 94%) 60%, hsl(265 40% 98%) 100%);
-    background-attachment: fixed;
     min-height: 100vh;
     letter-spacing: 0.01em;
   }
 
   html[data-theme="dark"] body {
-    background-image: radial-gradient(circle at 20% 10%, hsl(268 70% 32% / 0.35), transparent 50%),
-      linear-gradient(160deg, hsl(252 20% 10%) 0%, hsl(252 18% 12%) 55%, hsl(252 22% 14%) 100%);
+    background-color: hsl(var(--bg));
+    background-image: none;
   }
 
   h1,
@@ -78,23 +96,20 @@ html[data-theme="dark"] {
 
   .panel {
     @apply bg-surface border border-border/80 rounded-2xl;
-    box-shadow: 0 14px 30px -26px rgba(72, 52, 116, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    box-shadow: 0 4px 20px -10px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
 
   .panel-strong {
     @apply bg-surface-2 border border-border/80 rounded-2xl;
-    box-shadow: 0 0 0 1px hsl(266 60% 85% / 0.5), 0 18px 38px -30px rgba(84, 58, 130, 0.22),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.03), 0 10px 30px -20px rgba(0, 0, 0, 0.08);
   }
 
+  /* 
   html[data-theme="dark"] .panel {
-    box-shadow: 0 18px 40px -30px rgba(10, 5, 22, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    ...
   }
-
-  html[data-theme="dark"] .panel-strong {
-    box-shadow: 0 0 0 1px hsl(268 70% 30% / 0.6), 0 20px 42px -34px rgba(12, 6, 26, 0.8),
-      inset 0 1px 0 rgba(255, 255, 255, 0.02);
-  }
+  Removed specific dark mode overrides for panels to enforce the "Light Body / Dark Sidebar" theme 
+  */
 
   .muted {
     @apply text-text-muted;

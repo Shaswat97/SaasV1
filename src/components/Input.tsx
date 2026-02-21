@@ -2,21 +2,24 @@ import { cn } from "@/lib/utils";
 import type { InputHTMLAttributes } from "react";
 
 export type InputProps = InputHTMLAttributes<HTMLInputElement> & {
-  label: string;
+  label?: string;
   hint?: string;
   error?: string;
   required?: boolean;
 };
 
 export function Input({ label, hint, error, className, id, required, ...props }: InputProps) {
-  const inputId = id ?? label.toLowerCase().replace(/\s+/g, "-");
+  // Use provided ID, or generate one from label, or use a random fallback if neither exists
+  const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, "-") : `input-${Math.random().toString(36).substr(2, 9)}`);
 
   return (
     <label htmlFor={inputId} className="block space-y-2 text-sm">
-      <span className="text-text-muted">
-        {label}
-        {required ? <span className="ml-1 text-warning">*</span> : null}
-      </span>
+      {label && (
+        <span className="text-text-muted">
+          {label}
+          {required ? <span className="ml-1 text-warning">*</span> : null}
+        </span>
+      )}
       <input
         id={inputId}
         className={cn(
