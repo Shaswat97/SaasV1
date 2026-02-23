@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { SidebarNav } from "@/components/SidebarNav";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DarkModeToggle } from "@/components/DarkModeToggle";
 import { LogoutButton } from "@/components/LogoutButton";
 import { AUTH_COOKIE, resolveAuthContextByCookieValue } from "@/lib/auth";
 import { getTenantPrisma } from "@/lib/tenant-prisma";
@@ -44,7 +45,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-auto space-y-4">
-              {/* <ThemeToggle /> */}
               <div className="group/profile overflow-hidden whitespace-nowrap rounded-2xl bg-white/5 p-2 text-xs text-sidebar-muted transition-all duration-300 hover:bg-white/10 hover:text-sidebar-fg group-hover:p-3">
                 <p className="hidden font-medium uppercase tracking-wider text-sidebar-muted/80 group-hover:block">
                   Signed In
@@ -53,15 +53,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
                   <div className="flex h-10 w-10 min-w-[40px] items-center justify-center rounded-full bg-accent/20 text-accent font-bold">
                     {auth.employeeName.charAt(0)}
                   </div>
-                  <div className="hidden group-hover:block">
-                    <p className="text-sm font-semibold text-sidebar-fg">{auth.employeeName}</p>
+                  <div className="hidden group-hover:block whitespace-normal">
+                    <p className="text-sm font-semibold text-sidebar-fg line-clamp-1">{auth.employeeName}</p>
                     <p className="text-[10px] uppercase tracking-wide opacity-80">{auth.roleNames[0]}</p>
                   </div>
                 </div>
-                <div className="hidden mt-3 border-t border-white/10 pt-3 group-hover:block">
-                  <div>
-                    <LogoutButton />
-                  </div>
+                <div className="hidden mt-3 border-t border-white/10 pt-3 group-hover:flex items-center justify-between">
+                  <LogoutButton />
+                  <DarkModeToggle />
                 </div>
               </div>
             </div>
@@ -72,7 +71,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             {children}
           </div>
         </main>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
