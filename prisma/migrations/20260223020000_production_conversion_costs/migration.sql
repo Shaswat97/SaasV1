@@ -1,0 +1,6 @@
+ALTER TABLE "ProductionLog"
+ADD COLUMN "laborCost" DOUBLE PRECISION,
+ADD COLUMN "machineOverheadCost" DOUBLE PRECISION,
+ADD COLUMN "conversionCost" DOUBLE PRECISION,
+ADD COLUMN "actualTotalCost" DOUBLE PRECISION;
+
