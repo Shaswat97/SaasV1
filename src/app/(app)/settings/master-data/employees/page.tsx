@@ -622,360 +622,360 @@ export default function EmployeesPage() {
           </div>
 
           {directoryView === "list" ? (
-          <>
-          <Card className="mt-6 border-border/60">
-            <CardBody className="p-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-text">Attendance Register</h2>
-                  <p className="mt-1 text-sm text-text-muted">
-                    Mark today&apos;s attendance. Extra time and notes can be added only when needed.
+            <>
+              <Card className="mt-6 border-border/60">
+                <CardBody className="p-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-text">Attendance Register</h2>
+                      <p className="mt-1 text-sm text-text-muted">
+                        Mark today&apos;s attendance. Extra time and notes can be added only when needed.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="rounded-full border border-border/70 bg-surface px-3 py-2 text-text">
+                        Attendance date: <span className="font-medium">{formatDate(attendanceDate)}</span>
+                      </span>
+                      <Button variant="secondary" onClick={markVisibleEmployeesPresent} disabled={!filteredEmployees.length}>
+                        Mark visible as Present
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+                      Present: {attendanceSummary.PRESENT}
+                    </span>
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">
+                      Absent: {attendanceSummary.ABSENT}
+                    </span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
+                      Half Day: {attendanceSummary.HALF_DAY}
+                    </span>
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700">
+                      Leave: {attendanceSummary.LEAVE}
+                    </span>
+                    <span className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-muted">
+                      Visible: {filteredEmployees.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 overflow-x-auto rounded-2xl border border-border/60">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-bg-subtle/30 text-left text-xs uppercase tracking-wider text-text-muted">
+                          <th className="px-4 py-3">Employee</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Details</th>
+                          <th className="px-4 py-3 text-right">Save</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {filteredEmployees.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">
+                              {loading ? "Loading employees..." : "No employees available in current filter."}
+                            </td>
+                          </tr>
+                        ) : attendanceLoading ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">
+                              Loading attendance for {attendanceDate}...
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredEmployees.map((employee) => {
+                            const row = attendanceRows[employee.id] ?? defaultAttendanceDraft;
+                            const expanded = attendanceExpandedId === employee.id;
+                            return (
+                              <Fragment key={`attendance-${employee.id}`}>
+                                <tr className="hover:bg-bg-subtle/20">
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-3">
+                                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/90 to-indigo-500/90 text-xs font-semibold text-white">
+                                        {initials(employee.name)}
+                                      </span>
+                                      <div>
+                                        <p className="text-sm font-medium text-text">{employee.name}</p>
+                                        <p className="text-xs text-text-muted">{employee.code}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <select
+                                      value={row.status}
+                                      onChange={(event) =>
+                                        updateAttendanceDraft(employee.id, { status: event.target.value as AttendanceStatus })
+                                      }
+                                      className="focus-ring min-w-[140px] rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
+                                    >
+                                      <option value="PRESENT">Present</option>
+                                      <option value="ABSENT">Absent</option>
+                                      <option value="HALF_DAY">Half Day</option>
+                                      <option value="LEAVE">Leave</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => setAttendanceExpandedId(expanded ? null : employee.id)}
+                                      className="focus-ring rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text"
+                                    >
+                                      {expanded ? "Hide details" : "Add details"}
+                                    </button>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <Button
+                                      variant="secondary"
+                                      onClick={() => saveAttendance(employee)}
+                                      disabled={attendanceSavingId === employee.id}
+                                      className="min-w-[92px]"
+                                    >
+                                      {attendanceSavingId === employee.id ? "Saving..." : "Save"}
+                                    </Button>
+                                  </td>
+                                </tr>
+                                {expanded ? (
+                                  <tr className="bg-bg-subtle/10">
+                                    <td colSpan={4} className="px-4 pb-4 pt-0">
+                                      <div className="mt-2 grid gap-3 rounded-2xl border border-border/60 bg-surface p-3 md:grid-cols-[160px_160px_1fr]">
+                                        <label className="space-y-1">
+                                          <span className="text-xs font-medium text-text-muted">Check In (optional)</span>
+                                          <input
+                                            type="time"
+                                            value={row.checkInTime}
+                                            onChange={(event) => updateAttendanceDraft(employee.id, { checkInTime: event.target.value })}
+                                            className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="text-xs font-medium text-text-muted">Check Out (optional)</span>
+                                          <input
+                                            type="time"
+                                            value={row.checkOutTime}
+                                            onChange={(event) => updateAttendanceDraft(employee.id, { checkOutTime: event.target.value })}
+                                            className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
+                                          />
+                                        </label>
+                                        <label className="space-y-1">
+                                          <span className="text-xs font-medium text-text-muted">Notes (optional)</span>
+                                          <input
+                                            type="text"
+                                            value={row.notes}
+                                            onChange={(event) => updateAttendanceDraft(employee.id, { notes: event.target.value })}
+                                            placeholder="Reason, shift remark, leave note"
+                                            className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted"
+                                          />
+                                        </label>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </Fragment>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-3 text-xs text-text-muted">
+                    Attendance is marked for today by default. Date selection was removed to avoid accidental backdated marking.
                   </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="rounded-full border border-border/70 bg-surface px-3 py-2 text-text">
-                    Attendance date: <span className="font-medium">{formatDate(attendanceDate)}</span>
-                  </span>
-                  <Button variant="secondary" onClick={markVisibleEmployeesPresent} disabled={!filteredEmployees.length}>
-                    Mark visible as Present
-                  </Button>
-                </div>
-              </div>
+                </CardBody>
+              </Card>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
-                  Present: {attendanceSummary.PRESENT}
-                </span>
-                <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">
-                  Absent: {attendanceSummary.ABSENT}
-                </span>
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
-                  Half Day: {attendanceSummary.HALF_DAY}
-                </span>
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700">
-                  Leave: {attendanceSummary.LEAVE}
-                </span>
-                <span className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-muted">
-                  Visible: {filteredEmployees.length}
-                </span>
-              </div>
+              <Card className="mt-6 overflow-hidden border-border/60">
+                <CardBody className="p-0">
+                  <div className="flex flex-col gap-4 border-b border-border/60 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-center gap-2 text-sm text-text">
+                      <Users className="h-4 w-4 text-accent" />
+                      <span>
+                        Total Employee: <span className="font-semibold">{filteredEmployees.length} employees</span>
+                      </span>
+                      {selectedIds.length > 0 ? (
+                        <span className="rounded-full bg-bg-subtle px-2 py-1 text-xs text-text-muted">
+                          {selectedIds.length} selected
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                        <input
+                          type="text"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Search employee"
+                          className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-10 py-2.5 text-sm text-text placeholder:text-text-muted sm:w-72"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2">
+                        <Filter className="h-4 w-4 text-text-muted" />
+                        <select
+                          value={statusFilter}
+                          onChange={(event) => setStatusFilter(event.target.value as "ALL" | "ACTIVE" | "INACTIVE")}
+                          className="bg-transparent text-sm text-text outline-none"
+                        >
+                          <option value="ALL">All Status</option>
+                          <option value="ACTIVE">Active</option>
+                          <option value="INACTIVE">Inactive</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="mt-4 overflow-x-auto rounded-2xl border border-border/60">
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b border-border/60 bg-bg-subtle/30 text-left text-xs uppercase tracking-wider text-text-muted">
-                      <th className="px-4 py-3">Employee</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Details</th>
-                      <th className="px-4 py-3 text-right">Save</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40">
-                    {filteredEmployees.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">
-                          {loading ? "Loading employees..." : "No employees available in current filter."}
-                        </td>
-                      </tr>
-                    ) : attendanceLoading ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-muted">
-                          Loading attendance for {attendanceDate}...
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredEmployees.map((employee) => {
-                        const row = attendanceRows[employee.id] ?? defaultAttendanceDraft;
-                        const expanded = attendanceExpandedId === employee.id;
-                        return (
-                          <Fragment key={`attendance-${employee.id}`}>
-                            <tr className="hover:bg-bg-subtle/20">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/90 to-indigo-500/90 text-xs font-semibold text-white">
-                                    {initials(employee.name)}
-                                  </span>
-                                  <div>
-                                    <p className="text-sm font-medium text-text">{employee.name}</p>
-                                    <p className="text-xs text-text-muted">{employee.code}</p>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-bg-subtle/30 text-left text-xs uppercase tracking-wider text-text-muted">
+                          <th className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={allFilteredSelected}
+                              onChange={(event) => toggleSelectAllFiltered(event.target.checked)}
+                              aria-label="Select all visible employees"
+                            />
+                          </th>
+                          <th className="px-4 py-3">Employee</th>
+                          <th className="px-4 py-3">Roles</th>
+                          <th className="px-4 py-3">Contact</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">PIN Updated</th>
+                          <th className="px-4 py-3">Created</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {filteredEmployees.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-10 text-center text-sm text-text-muted">
+                              {loading ? "Loading employees..." : "No employees found."}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredEmployees.map((employee) => {
+                            const roleNames = employee.roles.map((entry) => entry.role.name);
+                            const isSelected = selectedIds.includes(employee.id);
+                            return (
+                              <tr
+                                key={employee.id}
+                                className={cn("transition-colors hover:bg-bg-subtle/30", isSelected && "bg-accent/5")}
+                              >
+                                <td className="px-4 py-4 align-top">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(event) => toggleSelectOne(employee.id, event.target.checked)}
+                                    aria-label={`Select ${employee.name}`}
+                                  />
+                                </td>
+                                <td className="px-4 py-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => openViewModal(employee)}
+                                    className="flex items-center gap-3 text-left"
+                                  >
+                                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/90 to-indigo-500/90 text-sm font-semibold text-white">
+                                      {initials(employee.name)}
+                                    </span>
+                                    <span>
+                                      <span className="block text-sm font-semibold text-text">{employee.name}</span>
+                                      <span className="block text-xs text-text-muted">{employee.code}</span>
+                                    </span>
+                                  </button>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {roleNames.length ? (
+                                      roleNames.map((role) => (
+                                        <span
+                                          key={`${employee.id}-${role}`}
+                                          className={cn(
+                                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border",
+                                            role === "ADMIN"
+                                              ? "border-amber-300 bg-amber-50 text-amber-700"
+                                              : "border-border/70 bg-surface-2/60 text-text"
+                                          )}
+                                        >
+                                          {role}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-xs text-text-muted">—</span>
+                                    )}
                                   </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <select
-                                  value={row.status}
-                                  onChange={(event) =>
-                                    updateAttendanceDraft(employee.id, { status: event.target.value as AttendanceStatus })
-                                  }
-                                  className="focus-ring min-w-[140px] rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
-                                >
-                                  <option value="PRESENT">Present</option>
-                                  <option value="ABSENT">Absent</option>
-                                  <option value="HALF_DAY">Half Day</option>
-                                  <option value="LEAVE">Leave</option>
-                                </select>
-                              </td>
-                              <td className="px-4 py-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setAttendanceExpandedId(expanded ? null : employee.id)}
-                                  className="focus-ring rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text"
-                                >
-                                  {expanded ? "Hide details" : "Add details"}
-                                </button>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => saveAttendance(employee)}
-                                  disabled={attendanceSavingId === employee.id}
-                                  className="min-w-[92px]"
-                                >
-                                  {attendanceSavingId === employee.id ? "Saving..." : "Save"}
-                                </Button>
-                              </td>
-                            </tr>
-                            {expanded ? (
-                              <tr className="bg-bg-subtle/10">
-                                <td colSpan={4} className="px-4 pb-4 pt-0">
-                                  <div className="mt-2 grid gap-3 rounded-2xl border border-border/60 bg-surface p-3 md:grid-cols-[160px_160px_1fr]">
-                                    <label className="space-y-1">
-                                      <span className="text-xs font-medium text-text-muted">Check In (optional)</span>
-                                      <input
-                                        type="time"
-                                        value={row.checkInTime}
-                                        onChange={(event) => updateAttendanceDraft(employee.id, { checkInTime: event.target.value })}
-                                        className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
-                                      />
-                                    </label>
-                                    <label className="space-y-1">
-                                      <span className="text-xs font-medium text-text-muted">Check Out (optional)</span>
-                                      <input
-                                        type="time"
-                                        value={row.checkOutTime}
-                                        onChange={(event) => updateAttendanceDraft(employee.id, { checkOutTime: event.target.value })}
-                                        className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text"
-                                      />
-                                    </label>
-                                    <label className="space-y-1">
-                                      <span className="text-xs font-medium text-text-muted">Notes (optional)</span>
-                                      <input
-                                        type="text"
-                                        value={row.notes}
-                                        onChange={(event) => updateAttendanceDraft(employee.id, { notes: event.target.value })}
-                                        placeholder="Reason, shift remark, leave note"
-                                        className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-3 py-2 text-sm text-text placeholder:text-text-muted"
-                                      />
-                                    </label>
+                                </td>
+                                <td className="px-4 py-4 text-sm">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-text-muted">
+                                      <Mail className="h-3.5 w-3.5" />
+                                      <span>{employee.email || "No email"}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-text-muted">
+                                      <Phone className="h-3.5 w-3.5" />
+                                      <span>{employee.phone || "No phone"}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <EmployeeStatusBadge active={employee.active} />
+                                </td>
+                                <td className="px-4 py-4 text-sm text-text-muted">{formatDate(employee.pinUpdatedAt)}</td>
+                                <td className="px-4 py-4 text-sm text-text-muted">{formatDate(employee.createdAt)}</td>
+                                <td className="px-4 py-4 text-right">
+                                  <div className="relative inline-block" ref={rowMenuId === employee.id ? rowMenuRef : undefined}>
+                                    <button
+                                      type="button"
+                                      className="focus-ring rounded-full p-2 text-text-muted hover:bg-bg-subtle"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setRowMenuId((current) => (current === employee.id ? null : employee.id));
+                                      }}
+                                      aria-label={`Open actions for ${employee.name}`}
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                    {rowMenuId === employee.id ? (
+                                      <div className="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-border/70 bg-surface p-2 shadow-xl">
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
+                                          onClick={() => openViewModal(employee)}
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                          View Profile
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
+                                          onClick={() => openEditModal(employee)}
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                          Edit Details
+                                        </button>
+                                        <div className="my-2 border-t border-border/60" />
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-danger hover:bg-danger/10"
+                                          onClick={() => handleDelete(employee)}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                          Delete Employee
+                                        </button>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 </td>
                               </tr>
-                            ) : null}
-                          </Fragment>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-3 text-xs text-text-muted">
-                Attendance is marked for today by default. Date selection was removed to avoid accidental backdated marking.
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card className="mt-6 overflow-hidden border-border/60">
-            <CardBody className="p-0">
-              <div className="flex flex-col gap-4 border-b border-border/60 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-center gap-2 text-sm text-text">
-                  <Users className="h-4 w-4 text-accent" />
-                  <span>
-                    Total Employee: <span className="font-semibold">{filteredEmployees.length} employees</span>
-                  </span>
-                  {selectedIds.length > 0 ? (
-                    <span className="rounded-full bg-bg-subtle px-2 py-1 text-xs text-text-muted">
-                      {selectedIds.length} selected
-                    </span>
-                  ) : null}
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search employee"
-                      className="focus-ring w-full rounded-xl border border-border/70 bg-surface px-10 py-2.5 text-sm text-text placeholder:text-text-muted sm:w-72"
-                    />
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2">
-                    <Filter className="h-4 w-4 text-text-muted" />
-                    <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value as "ALL" | "ACTIVE" | "INACTIVE")}
-                      className="bg-transparent text-sm text-text outline-none"
-                    >
-                      <option value="ALL">All Status</option>
-                      <option value="ACTIVE">Active</option>
-                      <option value="INACTIVE">Inactive</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b border-border/60 bg-bg-subtle/30 text-left text-xs uppercase tracking-wider text-text-muted">
-                      <th className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={allFilteredSelected}
-                          onChange={(event) => toggleSelectAllFiltered(event.target.checked)}
-                          aria-label="Select all visible employees"
-                        />
-                      </th>
-                      <th className="px-4 py-3">Employee</th>
-                      <th className="px-4 py-3">Roles</th>
-                      <th className="px-4 py-3">Contact</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">PIN Updated</th>
-                      <th className="px-4 py-3">Created</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40">
-                    {filteredEmployees.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-10 text-center text-sm text-text-muted">
-                          {loading ? "Loading employees..." : "No employees found."}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredEmployees.map((employee) => {
-                        const roleNames = employee.roles.map((entry) => entry.role.name);
-                        const isSelected = selectedIds.includes(employee.id);
-                        return (
-                          <tr
-                            key={employee.id}
-                            className={cn("transition-colors hover:bg-bg-subtle/30", isSelected && "bg-accent/5")}
-                          >
-                            <td className="px-4 py-4 align-top">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(event) => toggleSelectOne(employee.id, event.target.checked)}
-                                aria-label={`Select ${employee.name}`}
-                              />
-                            </td>
-                            <td className="px-4 py-4">
-                              <button
-                                type="button"
-                                onClick={() => openViewModal(employee)}
-                                className="flex items-center gap-3 text-left"
-                              >
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500/90 to-indigo-500/90 text-sm font-semibold text-white">
-                                  {initials(employee.name)}
-                                </span>
-                                <span>
-                                  <span className="block text-sm font-semibold text-text">{employee.name}</span>
-                                  <span className="block text-xs text-text-muted">{employee.code}</span>
-                                </span>
-                              </button>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex flex-wrap gap-1.5">
-                                {roleNames.length ? (
-                                  roleNames.map((role) => (
-                                    <span
-                                      key={`${employee.id}-${role}`}
-                                      className={cn(
-                                        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border",
-                                        role === "ADMIN"
-                                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                                          : "border-border/70 bg-surface-2/60 text-text"
-                                      )}
-                                    >
-                                      {role}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-text-muted">—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-sm">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 text-text-muted">
-                                  <Mail className="h-3.5 w-3.5" />
-                                  <span>{employee.email || "No email"}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-text-muted">
-                                  <Phone className="h-3.5 w-3.5" />
-                                  <span>{employee.phone || "No phone"}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <EmployeeStatusBadge active={employee.active} />
-                            </td>
-                            <td className="px-4 py-4 text-sm text-text-muted">{formatDate(employee.pinUpdatedAt)}</td>
-                            <td className="px-4 py-4 text-sm text-text-muted">{formatDate(employee.createdAt)}</td>
-                            <td className="px-4 py-4 text-right">
-                              <div className="relative inline-block" ref={rowMenuId === employee.id ? rowMenuRef : undefined}>
-                                <button
-                                  type="button"
-                                  className="focus-ring rounded-full p-2 text-text-muted hover:bg-bg-subtle"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setRowMenuId((current) => (current === employee.id ? null : employee.id));
-                                  }}
-                                  aria-label={`Open actions for ${employee.name}`}
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </button>
-                                {rowMenuId === employee.id ? (
-                                  <div className="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-border/70 bg-surface p-2 shadow-xl">
-                                    <button
-                                      type="button"
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
-                                      onClick={() => openViewModal(employee)}
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                      View Profile
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
-                                      onClick={() => openEditModal(employee)}
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                      Edit Details
-                                    </button>
-                                    <div className="my-2 border-t border-border/60" />
-                                    <button
-                                      type="button"
-                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-danger hover:bg-danger/10"
-                                      onClick={() => handleDelete(employee)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      Delete Employee
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardBody>
-          </Card>
-          </>
+                </CardBody>
+              </Card>
+            </>
           ) : null}
 
           {directoryView === "org" ? (
@@ -1313,7 +1313,7 @@ export default function EmployeesPage() {
                       )}
                     </div>
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <EmployeeField label="Login Code" value={selectedEmployee?.code ?? form.code || "—"} />
+                      <EmployeeField label="Login Code" value={(selectedEmployee?.code ?? form.code) || "—"} />
                       <EmployeeField label="Directory Visibility" value={selectedEmployee?.active ?? form.active ? "Visible (Active)" : "Hidden from login"} />
                     </div>
                   </div>

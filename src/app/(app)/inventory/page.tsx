@@ -198,6 +198,7 @@ export default function InventoryPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [selectedSummaryLabel, setSelectedSummaryLabel] = useState<string | null>(null);
   const [selectedZoneType, setSelectedZoneType] = useState<string>("ALL");
+  const [showEmptyStock, setShowEmptyStock] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const { toasts, push, remove } = useToast();
 
@@ -330,14 +331,19 @@ export default function InventoryPage() {
   }, [balances]);
 
   const filteredBalances = useMemo(() => {
+    let result = balances;
     if (selectedZoneId !== "ALL") {
-      return balances.filter((balance) => balance.zone.id === selectedZoneId);
+      result = result.filter((balance) => balance.zone.id === selectedZoneId);
+    } else if (selectedZoneType !== "ALL") {
+      result = result.filter((balance) => balance.zone.type === selectedZoneType);
     }
-    if (selectedZoneType !== "ALL") {
-      return balances.filter((balance) => balance.zone.type === selectedZoneType);
+
+    if (!showEmptyStock) {
+      result = result.filter((balance) => balance.quantityOnHand > 0);
     }
-    return balances;
-  }, [balances, selectedZoneId, selectedZoneType]);
+
+    return result;
+  }, [balances, selectedZoneId, selectedZoneType, showEmptyStock]);
 
   const filteredLedger = useMemo(() => {
     if (selectedZoneId !== "ALL") {
@@ -695,8 +701,17 @@ export default function InventoryPage() {
           </div>
 
           <div className="mt-6">
-            <div className="mb-3 text-xs text-text-muted">
-              Showing all {filteredBalances.length} entries · Scroll to view more
+            <div className="mb-3 flex items-center justify-between text-xs text-text-muted">
+              <span>Showing {filteredBalances.length} entries · Scroll to view more</span>
+              <label className="flex items-center gap-2 cursor-pointer hover:text-text transition">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-primary focus:ring-primary"
+                  checked={showEmptyStock}
+                  onChange={(e) => setShowEmptyStock(e.target.checked)}
+                />
+                Show out-of-stock items
+              </label>
             </div>
             <div className="max-h-[520px] overflow-y-auto pr-1">
               <DataTable

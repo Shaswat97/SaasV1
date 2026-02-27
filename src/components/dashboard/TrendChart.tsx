@@ -28,7 +28,7 @@ export function TrendChart({ data, color = "#6366f1", height = 60 }: TrendChartP
                         }}
                         itemStyle={{ color: "#e0e7ff", fontSize: "12px", fontWeight: 500 }}
                         labelStyle={{ display: "none" }}
-                        formatter={(value: number) => [value, ""]}
+                        formatter={(value: any) => [value, ""]}
                     />
                     <Area
                         type="monotone"

@@ -79,8 +79,8 @@ export function InsightEmployeePerformance() {
                             key={item.id}
                             onClick={() => setSelectedId(item.id)}
                             className={`w-full text-left p-4 rounded-xl border transition-all ${selectedId === item.id
-                                    ? "bg-purple-50 border-purple-200 shadow-sm"
-                                    : "bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50"
+                                ? "bg-purple-50 border-purple-200 shadow-sm"
+                                : "bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50"
                                 }`}
                         >
                             <div className="flex justify-between items-start mb-1">
@@ -164,7 +164,7 @@ export function InsightEmployeePerformance() {
                 <div className="bg-gray-50 rounded-xl p-6">
                     <h4 className="font-bold text-gray-900 mb-2">Automated Feedback</h4>
                     <p className="text-sm text-gray-600 leading-relaxed italic">
-                        "{selectedEmp.summary}"
+                        &quot;{selectedEmp.summary}&quot;
                     </p>
                 </div>
 

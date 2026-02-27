@@ -88,8 +88,8 @@ export function InsightLossAnalysis() {
                             key={item.id}
                             onClick={() => setSelectedId(item.id)}
                             className={`w-full text-left p-4 rounded-xl border transition-all ${selectedId === item.id
-                                    ? "bg-purple-50 border-purple-200 shadow-sm"
-                                    : "bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50"
+                                ? "bg-purple-50 border-purple-200 shadow-sm"
+                                : "bg-white border-gray-100 hover:border-gray-300 hover:bg-gray-50"
                                 }`}
                         >
                             <div className="flex justify-between items-start mb-1">
@@ -175,7 +175,7 @@ export function InsightLossAnalysis() {
                     <ul className="text-sm text-purple-800 space-y-2">
                         <li className="flex items-start gap-2">
                             <ArrowRight className="w-4 h-4 mt-0.5 shrink-0 text-purple-500" />
-                            Check calibration logs for CNC Lathe regarding "{selectedItem.primaryReason}".
+                            Check calibration logs for CNC Lathe regarding &quot;{selectedItem.primaryReason}&quot;.
                         </li>
                         <li className="flex items-start gap-2">
                             <ArrowRight className="w-4 h-4 mt-0.5 shrink-0 text-purple-500" />

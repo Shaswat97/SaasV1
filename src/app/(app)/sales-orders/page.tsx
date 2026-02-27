@@ -1277,10 +1277,10 @@ export default function SalesOrdersPage() {
         ) : hasNextDueDate && nextDueDate ? (
           <div
             className="ml-auto text-right"
-            title={`${overdueInvoiceCount > 0 ? "Overdue" : "Next due"}: ${formatDate(nextDueDate)}${openInvoiceCount > 1 ? ` • ${openInvoiceCount} open invoices` : ""}`}
+            title={`${overdueInvoiceCount > 0 ? "Overdue" : "Next due"}: ${formatDate(nextDueDate.toISOString())}${openInvoiceCount > 1 ? ` • ${openInvoiceCount} open invoices` : ""}`}
           >
             <div className={`text-xs font-semibold ${overdueInvoiceCount > 0 ? "text-red-700" : "text-amber-700"}`}>
-              {formatDate(nextDueDate)}
+              {formatDate(nextDueDate.toISOString())}
             </div>
             <div className={`text-[10px] ${overdueInvoiceCount > 0 ? "text-red-600" : "text-text-muted"}`}>
               {overdueInvoiceCount > 0
@@ -1333,7 +1333,7 @@ export default function SalesOrdersPage() {
         items: `${itemCount} item${itemCount !== 1 ? "s" : ""}`,
         fulfillment: (() => {
           if (order.status === "PRODUCTION" || (totalProducedQty > 0 && !isFulfilled && order.status !== "DISPATCH")) {
-            const pct = totalOrderedQty > 0 ? Math.round((totalProducedQty / totalOrderedQty) * 100) : 0;
+            const pct = totalOrderedQty > 0 ? Math.floor((totalProducedQty / totalOrderedQty) * 100) : 0;
             return (
               <div className="min-w-[140px]">
                 <div className="mb-1 flex items-center justify-between">
@@ -1358,8 +1358,8 @@ export default function SalesOrdersPage() {
           }
           // For DISPATCH orders show delivery progress — how much of each SKU has shipped
           if (order.status === "DISPATCH") {
-            const deliveryPct = totalOrderedQty > 0 ? Math.round((totalDeliveredQty / totalOrderedQty) * 100) : 0;
-            const productionPct = totalOrderedQty > 0 ? Math.round((totalProducedQty / totalOrderedQty) * 100) : 0;
+            const deliveryPct = totalOrderedQty > 0 ? Math.floor((totalDeliveredQty / totalOrderedQty) * 100) : 0;
+            const productionPct = totalOrderedQty > 0 ? Math.floor((totalProducedQty / totalOrderedQty) * 100) : 0;
             return (
               <div className="min-w-[160px] space-y-2">
                 <div>
@@ -1371,7 +1371,7 @@ export default function SalesOrdersPage() {
                     <span className="text-xs text-blue-700 font-medium">
                       {totalProducedQty} / {totalOrderedQty}
                     </span>
-                    {productionPct >= 100 ? (
+                    {totalProducedQty >= totalOrderedQty ? (
                       <span className="text-[10px] font-medium text-green-600">Completed</span>
                     ) : null}
                   </div>
@@ -1393,7 +1393,7 @@ export default function SalesOrdersPage() {
                       {totalDeliveredQty} / {totalOrderedQty}
                     </span>
                     <span className="text-[10px] text-text-muted">
-                      {deliveryPct === 0 ? "Not started" : deliveryPct < 100 ? "Partial" : "Complete"}
+                      {deliveryPct === 0 ? "Not started" : totalDeliveredQty >= totalOrderedQty ? "Complete" : "Partial"}
                     </span>
                   </div>
                   <div className="w-full h-1.5 rounded-full bg-gray-200">
@@ -2398,73 +2398,73 @@ export default function SalesOrdersPage() {
                       }
                     }
                     return (
-                  <DataTable
-                    columns={[
-                      { key: "date", label: "Date" },
-                      { key: "sku", label: "SKU" },
-                      { key: "qty", label: "Qty", align: "right" },
-                      { key: "packaging", label: "Packaging", align: "right" },
-                      { key: "notes", label: "Notes" },
-                      { key: "actions", label: "" }
-                    ]}
-                    rows={detail.deliveries.map((delivery) => ({
-                      ...(function () {
-                        const lineDelivered = delivery.line.deliveredQty ?? 0;
-                        const lineInvoiced = invoicedQtyByLine.get(delivery.soLineId) ?? 0;
-                        const lineOpenToInvoice = Math.max(lineDelivered - lineInvoiced, 0);
-                        const hasDirectInvoice = detail.invoices.some((invoice) => invoice.deliveryId === delivery.id);
-                        const canCreateDeliveryInvoice = !hasDirectInvoice && lineOpenToInvoice >= delivery.quantity;
-                        const invoiceStateLabel = hasDirectInvoice
-                          ? "Invoiced"
-                          : lineOpenToInvoice <= 0
-                            ? "Covered by other invoice"
-                            : lineOpenToInvoice < delivery.quantity
-                              ? "Partly covered"
-                              : null;
-                        return {
-                          __hasDirectInvoice: hasDirectInvoice,
-                          __canCreateDeliveryInvoice: canCreateDeliveryInvoice,
-                          __invoiceStateLabel: invoiceStateLabel
-                        };
-                      })(),
-                      date: formatDate(delivery.deliveryDate),
-                      sku: `${delivery.line.sku.code} · ${delivery.line.sku.name}`,
-                      qty: `${delivery.quantity} ${delivery.line.sku.unit}`,
-                      packaging: delivery.packagingCost ? delivery.packagingCost.toFixed(2) : "—",
-                      notes: delivery.notes ?? "—",
-                      actions: (
-                        <div className="flex items-center gap-1">
-                          {(function () {
+                      <DataTable
+                        columns={[
+                          { key: "date", label: "Date" },
+                          { key: "sku", label: "SKU" },
+                          { key: "qty", label: "Qty", align: "right" },
+                          { key: "packaging", label: "Packaging", align: "right" },
+                          { key: "notes", label: "Notes" },
+                          { key: "actions", label: "" }
+                        ]}
+                        rows={detail.deliveries.map((delivery) => ({
+                          ...(function () {
                             const lineDelivered = delivery.line.deliveredQty ?? 0;
                             const lineInvoiced = invoicedQtyByLine.get(delivery.soLineId) ?? 0;
                             const lineOpenToInvoice = Math.max(lineDelivered - lineInvoiced, 0);
                             const hasDirectInvoice = detail.invoices.some((invoice) => invoice.deliveryId === delivery.id);
                             const canCreateDeliveryInvoice = !hasDirectInvoice && lineOpenToInvoice >= delivery.quantity;
-                            if (!canCreateDeliveryInvoice) {
-                              return (
-                                <span className="text-xs text-text-muted">
-                                  {hasDirectInvoice
-                                    ? "Invoiced"
-                                    : lineOpenToInvoice <= 0
-                                      ? "Covered by other invoice"
-                                      : "Partly covered"}
-                                </span>
-                              );
-                            }
-                            return (
-                              <Button variant="ghost" onClick={() => createInvoiceForDelivery(delivery.id)}>
-                                Create Invoice
+                            const invoiceStateLabel = hasDirectInvoice
+                              ? "Invoiced"
+                              : lineOpenToInvoice <= 0
+                                ? "Covered by other invoice"
+                                : lineOpenToInvoice < delivery.quantity
+                                  ? "Partly covered"
+                                  : null;
+                            return {
+                              __hasDirectInvoice: hasDirectInvoice,
+                              __canCreateDeliveryInvoice: canCreateDeliveryInvoice,
+                              __invoiceStateLabel: invoiceStateLabel
+                            };
+                          })(),
+                          date: formatDate(delivery.deliveryDate),
+                          sku: `${delivery.line.sku.code} · ${delivery.line.sku.name}`,
+                          qty: `${delivery.quantity} ${delivery.line.sku.unit}`,
+                          packaging: delivery.packagingCost ? delivery.packagingCost.toFixed(2) : "—",
+                          notes: delivery.notes ?? "—",
+                          actions: (
+                            <div className="flex items-center gap-1">
+                              {(function () {
+                                const lineDelivered = delivery.line.deliveredQty ?? 0;
+                                const lineInvoiced = invoicedQtyByLine.get(delivery.soLineId) ?? 0;
+                                const lineOpenToInvoice = Math.max(lineDelivered - lineInvoiced, 0);
+                                const hasDirectInvoice = detail.invoices.some((invoice) => invoice.deliveryId === delivery.id);
+                                const canCreateDeliveryInvoice = !hasDirectInvoice && lineOpenToInvoice >= delivery.quantity;
+                                if (!canCreateDeliveryInvoice) {
+                                  return (
+                                    <span className="text-xs text-text-muted">
+                                      {hasDirectInvoice
+                                        ? "Invoiced"
+                                        : lineOpenToInvoice <= 0
+                                          ? "Covered by other invoice"
+                                          : "Partly covered"}
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <Button variant="ghost" onClick={() => createInvoiceForDelivery(delivery.id)}>
+                                    Create Invoice
+                                  </Button>
+                                );
+                              })()}
+                              <Button variant="ghost" onClick={() => downloadPackingSlip(detail.id, delivery.id)}>
+                                Packing Slip
                               </Button>
-                            );
-                          })()}
-                          <Button variant="ghost" onClick={() => downloadPackingSlip(detail.id, delivery.id)}>
-                            Packing Slip
-                          </Button>
-                        </div>
-                      )
-                    }))}
-                    emptyLabel="No deliveries recorded yet."
-                  />
+                            </div>
+                          )
+                        }))}
+                        emptyLabel="No deliveries recorded yet."
+                      />
                     );
                   })()}
                   {deliveryLines.length ? (
@@ -2668,15 +2668,14 @@ export default function SalesOrdersPage() {
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                                isCoveredDuplicateDeliveryInvoice
-                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                  : normalizedPaymentStatus === "PAID"
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isCoveredDuplicateDeliveryInvoice
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : normalizedPaymentStatus === "PAID"
                                   ? "bg-green-50 text-green-700 border border-green-200"
                                   : normalizedPaymentStatus === "PARTIALLY_PAID"
                                     ? "bg-amber-50 text-amber-700 border border-amber-200"
                                     : "bg-yellow-50 text-yellow-700 border border-yellow-200"
-                              }`}>
+                                }`}>
                                 {isCoveredDuplicateDeliveryInvoice
                                   ? "Payment: Covered (Duplicate Invoice)"
                                   : `Payment: ${formatInvoicePaymentStatus(normalizedPaymentStatus)}`}
