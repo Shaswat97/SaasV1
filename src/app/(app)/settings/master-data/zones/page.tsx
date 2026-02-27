@@ -39,17 +39,20 @@ export default function ZonesPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [zoneData, warehouseData] = await Promise.all([
+      const [zoneData, warehouseData, userData] = await Promise.all([
         apiGet<Zone[]>("/api/zones"),
-        apiGet<Warehouse[]>("/api/warehouses")
+        apiGet<Warehouse[]>("/api/warehouses"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setZones(zoneData);
       setWarehouses(warehouseData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       if (!form.warehouseId && warehouseData[0]) {
         setForm((prev) => ({ ...prev, warehouseId: warehouseData[0].id }));
       }
@@ -208,11 +211,11 @@ export default function ZonesPage() {
                   name: zone.name,
                   warehouse: zone.warehouse?.name ?? "—",
                   type: zone.type.replace(/_/g, " "),
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(zone)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading zones..." : "No zones found."}
               />

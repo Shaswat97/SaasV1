@@ -41,19 +41,22 @@ export default function MachineSkusPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [machineSkuData, machineData, skuData] = await Promise.all([
+      const [machineSkuData, machineData, skuData, userData] = await Promise.all([
         apiGet<MachineSku[]>("/api/machine-skus"),
         apiGet<Machine[]>("/api/machines"),
-        apiGet<FinishedSku[]>("/api/finished-skus")
+        apiGet<FinishedSku[]>("/api/finished-skus"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setMachineSkus(machineSkuData);
       setMachines(machineData);
       setSkus(skuData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       setForm((prev) => ({
         ...prev,
         machineId: prev.machineId || machineData[0]?.id || "",
@@ -208,11 +211,11 @@ export default function MachineSkusPage() {
                   machine: item.machine.name,
                   sku: item.sku.name,
                   capacity: item.capacityPerMinute,
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(item)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading machine SKUs..." : "No machine SKUs found."}
               />

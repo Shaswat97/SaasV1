@@ -43,17 +43,20 @@ export default function RawSkusPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [skuData, vendorData] = await Promise.all([
+      const [skuData, vendorData, userData] = await Promise.all([
         apiGet<RawSku[]>("/api/raw-skus"),
-        apiGet<Vendor[]>("/api/vendors")
+        apiGet<Vendor[]>("/api/vendors"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setSkus(skuData);
       setVendors(vendorData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load raw SKUs");
     } finally {
@@ -234,11 +237,11 @@ export default function RawSkusPage() {
                   unit: sku.unit,
                   threshold: sku.lowStockThreshold != null ? `${sku.lowStockThreshold} ${sku.unit}` : "—",
                   vendor: sku.preferredVendor ? sku.preferredVendor.name : "—",
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(sku)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading raw SKUs..." : "No raw SKUs found."}
               />

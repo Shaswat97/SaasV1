@@ -80,23 +80,26 @@ export default function FinishedSkusPage() {
   const [bomLines, setBomLines] = useState<BomLine[]>([]);
   const [routingLines, setRoutingLines] = useState<RoutingLine[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [skuData, rawSkuData, bomData, machineData, routingData] = await Promise.all([
+      const [skuData, rawSkuData, bomData, machineData, routingData, userData] = await Promise.all([
         apiGet<FinishedSku[]>("/api/finished-skus"),
         apiGet<RawSku[]>("/api/raw-skus"),
         apiGet<Bom[]>("/api/boms"),
         apiGet<Machine[]>("/api/machines"),
-        apiGet<Routing[]>("/api/routings")
+        apiGet<Routing[]>("/api/routings"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setSkus(skuData);
       setRawSkus(rawSkuData);
       setBoms(bomData);
       setMachines(machineData);
       setRoutings(routingData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       const defaultId = skuData[0]?.id ?? "";
       setSelectedFinishedId((prev) => prev || defaultId);
     } catch (error: any) {
@@ -538,9 +541,11 @@ export default function FinishedSkusPage() {
                   threshold: sku.lowStockThreshold != null ? `${sku.lowStockThreshold} ${sku.unit}` : "—",
                   actions: (
                     <div className="flex gap-2">
-                      <Button variant="ghost" onClick={() => handleEdit(sku)}>
-                        Edit
-                      </Button>
+                      {isTechno && (
+                        <Button variant="ghost" onClick={() => handleEdit(sku)}>
+                          Edit
+                        </Button>
+                      )}
                       <Button variant="ghost" onClick={() => setSelectedFinishedId(sku.id)}>
                         Map
                       </Button>

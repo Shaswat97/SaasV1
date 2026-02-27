@@ -73,19 +73,22 @@ export default function SalesPricingPage() {
   const [active, setActive] = useState(true);
   const [lines, setLines] = useState<LineForm[]>([]);
   const [saving, setSaving] = useState(false);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [customerData, skuData, listData] = await Promise.all([
+      const [customerData, skuData, listData, userData] = await Promise.all([
         apiGet<Customer[]>("/api/customers"),
         apiGet<FinishedSku[]>("/api/finished-skus"),
-        apiGet<PriceList[]>("/api/sales-price-lists")
+        apiGet<PriceList[]>("/api/sales-price-lists"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setCustomers(customerData);
       setSkus(skuData);
       setLists(listData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load sales price lists");
     } finally {
@@ -144,27 +147,27 @@ export default function SalesPricingPage() {
     setLines(
       list.lines.length
         ? list.lines.map((line) => ({
-            skuId: line.skuId,
-            unitPrice: String(line.unitPrice),
-            discountPct: String(line.discountPct ?? 0),
-            taxPct: String(line.taxPct ?? 0),
-            minQty: line.minQty != null ? String(line.minQty) : "",
-            effectiveFrom: toInputDate(line.effectiveFrom),
-            effectiveTo: toInputDate(line.effectiveTo ?? null),
-            active: line.active
-          }))
+          skuId: line.skuId,
+          unitPrice: String(line.unitPrice),
+          discountPct: String(line.discountPct ?? 0),
+          taxPct: String(line.taxPct ?? 0),
+          minQty: line.minQty != null ? String(line.minQty) : "",
+          effectiveFrom: toInputDate(line.effectiveFrom),
+          effectiveTo: toInputDate(line.effectiveTo ?? null),
+          active: line.active
+        }))
         : [
-            {
-              skuId: skus[0]?.id ?? "",
-              unitPrice: "",
-              discountPct: "0",
-              taxPct: "0",
-              minQty: "",
-              effectiveFrom: new Date().toISOString().slice(0, 10),
-              effectiveTo: "",
-              active: true
-            }
-          ]
+          {
+            skuId: skus[0]?.id ?? "",
+            unitPrice: "",
+            discountPct: "0",
+            taxPct: "0",
+            minQty: "",
+            effectiveFrom: new Date().toISOString().slice(0, 10),
+            effectiveTo: "",
+            active: true
+          }
+        ]
     );
     setModalOpen(true);
   }
@@ -297,12 +300,16 @@ export default function SalesPricingPage() {
               updated: new Date(list.updatedAt).toLocaleDateString("en-IN"),
               actions: (
                 <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => openEdit(list)}>
-                    Edit
-                  </Button>
-                  <Button variant="ghost" className="text-danger hover:text-danger" onClick={() => handleDelete(list.id)}>
-                    Delete
-                  </Button>
+                  {isTechno && (
+                    <>
+                      <Button variant="ghost" onClick={() => openEdit(list)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" className="text-danger hover:text-danger" onClick={() => handleDelete(list.id)}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
                 </div>
               )
             }))}

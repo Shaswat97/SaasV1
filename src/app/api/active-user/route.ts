@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     return jsonOk({
       actorName: "Anonymous",
       actorEmployeeId: null,
+      actorEmployeeCode: null,
       isAdmin: false,
       permissions: []
     });
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
   return jsonOk({
     actorName: auth.employeeName,
     actorEmployeeId: auth.employeeId,
+    actorEmployeeCode: auth.employeeCode,
     isAdmin: auth.isAdmin,
     permissions: auth.permissions
   });

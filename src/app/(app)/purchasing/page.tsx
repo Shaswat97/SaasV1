@@ -260,24 +260,27 @@ export default function PurchasingPage() {
     poTab: "drafts",
     billTab: "all"
   });
+  const [isTechno, setIsTechno] = useState(false);
 
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [vendorData, skuData, zoneData, orderData, billData] = await Promise.all([
+      const [vendorData, skuData, zoneData, orderData, billData, userData] = await Promise.all([
         apiGet<Vendor[]>("/api/vendors"),
         apiGet<RawSku[]>("/api/raw-skus"),
         apiGet<Zone[]>("/api/zones"),
         apiGet<PurchaseOrder[]>("/api/purchase-orders?includeDeleted=true"),
-        apiGet<VendorBill[]>("/api/vendor-bills")
+        apiGet<VendorBill[]>("/api/vendor-bills"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setVendors(vendorData);
       setRawSkus(skuData);
       setZones(zoneData);
       setOrders(orderData);
       setVendorBills(billData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       if (!vendorId) {
         const firstRaw = vendorData.find((vendor) => (vendor.vendorType ?? "RAW") === "RAW");
         if (firstRaw) setVendorId(firstRaw.id);
@@ -1156,10 +1159,12 @@ export default function PurchasingPage() {
                       ),
                       actions: (
                         <div className="flex gap-1">
-                          {order.type !== "SUBCONTRACT" && (
+                          {order.type !== "SUBCONTRACT" && isTechno && (
                             <button onClick={() => handleEdit(order)} className="px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors border border-gray-200">Edit</button>
                           )}
-                          <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          {isTechno && (
+                            <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          )}
                           <button onClick={() => confirmOrder(order.id)} className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-xs font-medium text-green-700 hover:text-green-800 transition-colors border border-green-200">Confirm</button>
                         </div>
                       )
@@ -1195,7 +1200,9 @@ export default function PurchasingPage() {
                       actions: (
                         <div className="flex gap-1">
                           <button onClick={() => approveOrder(order.id)} className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-xs font-medium text-green-700 hover:text-green-800 transition-colors border border-green-200">Approve</button>
-                          <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          {isTechno && (
+                            <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                          )}
                         </div>
                       )
                     }))}
@@ -1264,7 +1271,9 @@ export default function PurchasingPage() {
                           <div className="flex gap-1">
                             <button onClick={() => openReceive(order)} className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-xs font-medium text-blue-700 hover:text-blue-800 transition-colors border border-blue-200">Receive</button>
                             <button onClick={() => closeOrder(order)} className="px-2.5 py-1 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 hover:text-gray-800 transition-colors border border-gray-200">Close</button>
-                            <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                            {isTechno && (
+                              <button onClick={() => deleteOrder(order)} className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-xs font-medium text-red-500 hover:text-red-700 transition-colors">Delete</button>
+                            )}
                           </div>
                         )
                       };

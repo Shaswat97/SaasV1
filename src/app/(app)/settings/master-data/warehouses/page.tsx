@@ -30,13 +30,18 @@ export default function WarehousesPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadWarehouses() {
     setLoading(true);
     try {
-      const data = await apiGet<Warehouse[]>("/api/warehouses");
+      const [data, user] = await Promise.all([
+        apiGet<Warehouse[]>("/api/warehouses"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setWarehouses(data);
+      setIsTechno(user.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load warehouses");
     } finally {
@@ -158,11 +163,11 @@ export default function WarehousesPage() {
                   code: warehouse.code,
                   name: warehouse.name,
                   status: warehouse.active ? "Active" : "Inactive",
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(warehouse)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading warehouses..." : "No warehouses found."}
               />

@@ -75,13 +75,18 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadCustomers() {
     setLoading(true);
     try {
-      const data = await apiGet<Customer[]>("/api/customers");
+      const [data, user] = await Promise.all([
+        apiGet<Customer[]>("/api/customers"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setCustomers(data);
+      setIsTechno(user.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load customers");
     } finally {
@@ -342,11 +347,11 @@ export default function CustomersPage() {
                   name: customer.name,
                   contact: customer.email ?? customer.phone ?? "—",
                   status: customer.active ? "Active" : "Inactive",
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(customer)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading customers..." : "No customers found."}
               />

@@ -229,13 +229,19 @@ export default function EmployeesPage() {
   );
 
   const isEditable = modalMode === "create" || modalMode === "edit";
+  const [isTechno, setIsTechno] = useState(false);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [employeeData, roleData] = await Promise.all([apiGet<Employee[]>("/api/employees"), apiGet<Role[]>("/api/roles")]);
+      const [employeeData, roleData, userData] = await Promise.all([
+        apiGet<Employee[]>("/api/employees"),
+        apiGet<Role[]>("/api/roles"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setEmployees(employeeData);
       setRoles(roleData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       if (roleData.length > 0 && form.roles.length === 0 && !editingId) {
         setForm((current) => ({ ...current, roles: [roleData[0].name] }));
       }
@@ -945,23 +951,27 @@ export default function EmployeesPage() {
                                           <Eye className="h-4 w-4" />
                                           View Profile
                                         </button>
-                                        <button
-                                          type="button"
-                                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
-                                          onClick={() => openEditModal(employee)}
-                                        >
-                                          <Pencil className="h-4 w-4" />
-                                          Edit Details
-                                        </button>
-                                        <div className="my-2 border-t border-border/60" />
-                                        <button
-                                          type="button"
-                                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-danger hover:bg-danger/10"
-                                          onClick={() => handleDelete(employee)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                          Delete Employee
-                                        </button>
+                                        {isTechno && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-text hover:bg-bg-subtle"
+                                              onClick={() => openEditModal(employee)}
+                                            >
+                                              <Pencil className="h-4 w-4" />
+                                              Edit Details
+                                            </button>
+                                            <div className="my-2 border-t border-border/60" />
+                                            <button
+                                              type="button"
+                                              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-danger hover:bg-danger/10"
+                                              onClick={() => handleDelete(employee)}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                              Delete Employee
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                     ) : null}
                                   </div>

@@ -38,14 +38,19 @@ export default function RolesPage() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadRoles() {
     setLoading(true);
     try {
-      const data = await apiGet<RolesResponse>("/api/roles?includeCatalog=true");
+      const [data, user] = await Promise.all([
+        apiGet<RolesResponse>("/api/roles?includeCatalog=true"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setRoles(data.roles);
       setCatalog(data.permissionCatalog);
+      setIsTechno(user.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load roles");
     } finally {
@@ -190,10 +195,12 @@ export default function RolesPage() {
                 permissions: `${role.permissions.length} selected`,
                 actions: (
                   <div className="flex gap-2">
-                    <Button variant="ghost" onClick={() => handleEdit(role)}>
-                      Edit
-                    </Button>
-                    {role.name !== "ADMIN" ? (
+                    {isTechno && (
+                      <Button variant="ghost" onClick={() => handleEdit(role)}>
+                        Edit
+                      </Button>
+                    )}
+                    {isTechno && role.name !== "ADMIN" ? (
                       <Button variant="ghost" onClick={() => handleDelete(role.id)}>
                         Delete
                       </Button>

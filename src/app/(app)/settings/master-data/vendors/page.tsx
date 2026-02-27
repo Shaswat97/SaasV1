@@ -100,13 +100,18 @@ export default function VendorsPage() {
   const [linkSkuId, setLinkSkuId] = useState("");
   const [linkPrice, setLinkPrice] = useState("");
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadVendors() {
     setLoading(true);
     try {
-      const data = await apiGet<Vendor[]>("/api/vendors");
+      const [data, user] = await Promise.all([
+        apiGet<Vendor[]>("/api/vendors"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setVendors(data);
+      setIsTechno(user.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load vendors");
     } finally {
@@ -338,9 +343,8 @@ export default function VendorsPage() {
                 <p className="mb-4 text-xs uppercase tracking-[0.2em] text-text-muted">
                   {form.vendorType === "SCRAP"
                     ? "SKU linking not applicable for scrap buyers."
-                    : `Linked ${form.vendorType === "SUBCONTRACT" ? "Finished" : "Raw"} SKUs: ${
-                        vendors.find((vendor) => vendor.id === editingId)?._count?.vendorSkus ?? 0
-                      }`}
+                    : `Linked ${form.vendorType === "SUBCONTRACT" ? "Finished" : "Raw"} SKUs: ${vendors.find((vendor) => vendor.id === editingId)?._count?.vendorSkus ?? 0
+                    }`}
                 </p>
               ) : null}
               <form className="space-y-4" onSubmit={handleSubmit}>
@@ -613,11 +617,11 @@ export default function VendorsPage() {
                         : "Raw Supplier",
                   skus: vendor._count?.vendorSkus ?? 0,
                   status: vendor.active ? "Active" : "Inactive",
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(vendor)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading vendors..." : "No vendors found."}
               />

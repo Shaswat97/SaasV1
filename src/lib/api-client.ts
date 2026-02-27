@@ -19,9 +19,10 @@ async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> 
   try {
     return JSON.parse(text) as ApiResponse<T>;
   } catch {
+    console.error("Non-JSON response from server. Status:", response.status, "Body preview:", text.slice(0, 500));
     return {
-      ok: response.ok,
-      message: "Non-JSON response from server"
+      ok: false,
+      message: `Non-JSON response (Status ${response.status}): ${text.slice(0, 100)}...`
     } as ApiResponse<T>;
   }
 }

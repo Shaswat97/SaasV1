@@ -163,8 +163,16 @@ export default function DashboardPage() {
   const [revenueView, setRevenueView] = useState<"customer" | "sku" | "order">("customer");
   const [dateRange, setDateRange] = useState<DateRange>(() => getPresetRange("current_month"));
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
+
   const fromDate = toLocalDate(dateRange.from);
   const toDate = toLocalDate(dateRange.to);
+
+  useEffect(() => {
+    apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      .then(res => setIsTechno(res.actorEmployeeCode === "Techno"))
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -188,6 +196,9 @@ export default function DashboardPage() {
           apiGet<any>(`/api/dashboard${query}`),
         ]);
         setData(dashboard);
+      } catch (err: any) {
+        console.error("Failed to load dashboard:", err);
+        // We will just let the user know, or silently fail if it's intermittent
       } finally {
         setLoading(false);
       }
@@ -586,8 +597,8 @@ export default function DashboardPage() {
       .join("");
     const lowStockRows = data.alerts.lowStock.length
       ? data.alerts.lowStock
-          .map(
-            (item) => `
+        .map(
+          (item) => `
               <tr>
                 <td>${escapeHtml(item.code)}</td>
                 <td>${escapeHtml(item.name)}</td>
@@ -596,20 +607,20 @@ export default function DashboardPage() {
                 <td style="text-align:right;color:${item.shortage > 0 ? "#b91c1c" : "#475569"}">${number.format(item.shortage)} ${escapeHtml(item.unit)}</td>
               </tr>
             `
-          )
-          .join("")
+        )
+        .join("")
       : `<tr><td colspan="5" style="color:#64748b">No low stock alerts in this period.</td></tr>`;
 
     const delayedRows = (data.alerts.delayedDeliveries ?? []).length
       ? (data.alerts.delayedDeliveries ?? [])
-          .slice(0, 8)
-          .map((row: any) => {
-            const so = row.soNumber ?? "—";
-            const customer = row.customer ?? "—";
-            const sku = row.sku ?? "—";
-            const openQty = row.openQty ?? 0;
-            const daysOpen = row.daysOpen ?? 0;
-            return `
+        .slice(0, 8)
+        .map((row: any) => {
+          const so = row.soNumber ?? "—";
+          const customer = row.customer ?? "—";
+          const sku = row.sku ?? "—";
+          const openQty = row.openQty ?? 0;
+          const daysOpen = row.daysOpen ?? 0;
+          return `
               <tr>
                 <td>${escapeHtml(String(so))}</td>
                 <td>${escapeHtml(String(customer))}</td>
@@ -618,8 +629,8 @@ export default function DashboardPage() {
                 <td style="text-align:right">${number.format(Number(daysOpen) || 0)}</td>
               </tr>
             `;
-          })
-          .join("")
+        })
+        .join("")
       : `<tr><td colspan="5" style="color:#64748b">No delayed delivery alerts in this period.</td></tr>`;
 
     const actionRows = [
@@ -905,13 +916,15 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <DateFilter value={dateRange} onChange={(range) => setDateRange(range)} defaultPreset="current_month" />
 
-          <button
-            onClick={() => setShowInsights(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 rounded-lg text-sm font-semibold text-white shadow-sm hover:bg-purple-700 transition-all"
-          >
-            <Sparkles className="w-4 h-4" />
-            Get Insights
-          </button>
+          {isTechno && (
+            <button
+              onClick={() => setShowInsights(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 rounded-lg text-sm font-semibold text-white shadow-sm hover:bg-purple-700 transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              Get Insights
+            </button>
+          )}
 
           <div className="relative" ref={exportMenuRef}>
             <button
@@ -1151,8 +1164,8 @@ export default function DashboardPage() {
               label: "Recent Alerts",
               count: data
                 ? (data.alerts?.delayedDeliveries?.length || 0) +
-                  (data.alerts?.overdueReceivables?.length || 0) +
-                  (data.alerts?.overduePayables?.length || 0)
+                (data.alerts?.overdueReceivables?.length || 0) +
+                (data.alerts?.overduePayables?.length || 0)
                 : 0,
               content: (
                 <div className="p-6">

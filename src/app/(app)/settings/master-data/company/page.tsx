@@ -103,13 +103,18 @@ export default function CompanyPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTechno, setIsTechno] = useState(false);
   const { toasts, push, remove } = useToast();
 
   async function loadCompanies() {
     setLoading(true);
     try {
-      const data = await apiGet<Company[]>("/api/companies");
+      const [data, user] = await Promise.all([
+        apiGet<Company[]>("/api/companies"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
+      ]);
       setCompanies(data);
+      setIsTechno(user.actorEmployeeCode === "Techno");
     } catch (error: any) {
       push("error", error.message ?? "Failed to load companies");
     } finally {
@@ -484,11 +489,11 @@ export default function CompanyPage() {
                   gstin: company.gstin ?? "—",
                   pan: company.pan ?? "—",
                   contact: company.email ?? company.phone ?? "—",
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleEdit(company)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading companies..." : "No companies found."}
               />

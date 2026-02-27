@@ -57,7 +57,7 @@ const templateHeaders: Record<string, string[]> = {
   employees: ["code", "name", "phone", "email", "active"],
   machines: ["code", "name", "model", "category", "baseCapacityPerMinute", "active"],
   raw_skus: ["code", "name", "unit", "scrapPct", "lowStockThreshold", "lastPurchasePrice", "standardCost", "active"],
-  finished_skus: ["code", "name", "unit", "manufacturingCost", "sellingPrice", "lowStockThreshold", "active"],
+  finished_skus: ["code", "name", "unit", "sellingPrice", "lowStockThreshold", "active"],
   warehouses: ["code", "name", "active"],
   zones: ["code", "name", "warehouseCode", "type", "active"]
 };

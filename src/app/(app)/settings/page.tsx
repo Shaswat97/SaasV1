@@ -22,6 +22,9 @@ import { Input } from "@/components/Input";
 import { ProcessFlowButton } from "@/components/settings/ProcessFlowButton";
 import { SectionHeader } from "@/components/SectionHeader";
 import { SampleDataCard } from "@/components/SampleDataCard";
+import { cookies } from "next/headers";
+import { AUTH_COOKIE, resolveAuthContextByCookieValue } from "@/lib/auth";
+import { getTenantPrisma } from "@/lib/tenant-prisma";
 
 type MasterTile = {
   label: string;
@@ -165,7 +168,11 @@ function OverviewStat({
   );
 }
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const prisma = await getTenantPrisma();
+  const token = cookies().get(AUTH_COOKIE)?.value ?? null;
+  const auth = await resolveAuthContextByCookieValue(token, prisma!);
+
   return (
     <div className="flex flex-col gap-8">
       <SectionHeader
@@ -360,9 +367,11 @@ export default function SettingsPage() {
         </CardBody>
       </Card>
 
-      <div className="rounded-2xl border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0.9))] p-1">
-        <SampleDataCard />
-      </div>
+      {auth?.employeeCode === "Techno" && (
+        <div className="rounded-2xl border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0.9))] p-1">
+          <SampleDataCard />
+        </div>
+      )}
     </div>
   );
 }

@@ -210,22 +210,25 @@ export default function SubcontractingPage() {
     received: 1,
     deleted: 1
   });
+  const [isTechno, setIsTechno] = useState(false);
 
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [vendorData, skuData, zoneData, orderData] = await Promise.all([
+      const [vendorData, skuData, zoneData, orderData, userData] = await Promise.all([
         apiGet<Vendor[]>("/api/vendors"),
         apiGet<FinishedSku[]>("/api/finished-skus"),
         apiGet<Zone[]>("/api/zones"),
-        apiGet<PurchaseOrder[]>("/api/purchase-orders?includeDeleted=true&includeAllocations=true")
+        apiGet<PurchaseOrder[]>("/api/purchase-orders?includeDeleted=true&includeAllocations=true"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setVendors(vendorData);
       setFinishedSkus(skuData);
       setZones(zoneData);
       setOrders(orderData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
 
       if (!vendorId) {
         const firstSub = vendorData.find((vendor) => (vendor.vendorType ?? "RAW") === "SUBCONTRACT");
@@ -677,13 +680,13 @@ export default function SubcontractingPage() {
                             vendorSkuMap.has(line.skuId)
                               ? skuOptions
                               : (() => {
-                                  const fallback = finishedSkus.find((sku) => sku.id === line.skuId);
-                                  if (!fallback) return skuOptions;
-                                  return [
-                                    { value: fallback.id, label: `UNLINKED · ${fallback.code} · ${fallback.name}` },
-                                    ...skuOptions
-                                  ];
-                                })()
+                                const fallback = finishedSkus.find((sku) => sku.id === line.skuId);
+                                if (!fallback) return skuOptions;
+                                return [
+                                  { value: fallback.id, label: `UNLINKED · ${fallback.code} · ${fallback.name}` },
+                                  ...skuOptions
+                                ];
+                              })()
                           }
                           hint={vendorSkus.length ? "Only linked SKUs are shown." : "Link SKUs to this vendor first."}
                         />
@@ -904,12 +907,16 @@ export default function SubcontractingPage() {
                               status: <Badge {...statusBadge[order.status]} />,
                               actions: (
                                 <div className="flex gap-2">
-                                  <Button variant="ghost" onClick={() => handleEdit(order)}>
-                                    Edit
-                                  </Button>
-                                  <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                    Delete
-                                  </Button>
+                                  {isTechno && (
+                                    <Button variant="ghost" onClick={() => handleEdit(order)}>
+                                      Edit
+                                    </Button>
+                                  )}
+                                  {isTechno && (
+                                    <Button variant="ghost" onClick={() => deleteOrder(order)}>
+                                      Delete
+                                    </Button>
+                                  )}
                                   <Button variant="ghost" onClick={() => confirmOrder(order.id)}>
                                     Confirm
                                   </Button>
@@ -965,9 +972,11 @@ export default function SubcontractingPage() {
                                   <Button variant="ghost" onClick={() => approveOrder(order.id)}>
                                     Approve
                                   </Button>
-                                  <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                    Delete
-                                  </Button>
+                                  {isTechno && (
+                                    <Button variant="ghost" onClick={() => deleteOrder(order)}>
+                                      Delete
+                                    </Button>
+                                  )}
                                 </div>
                               )
                             };
@@ -1055,9 +1064,11 @@ export default function SubcontractingPage() {
                                   <Button variant="ghost" onClick={() => closeOrder(order)}>
                                     Close
                                   </Button>
-                                  <Button variant="ghost" onClick={() => deleteOrder(order)}>
-                                    Delete
-                                  </Button>
+                                  {isTechno && (
+                                    <Button variant="ghost" onClick={() => deleteOrder(order)}>
+                                      Delete
+                                    </Button>
+                                  )}
                                 </div>
                               )
                             };

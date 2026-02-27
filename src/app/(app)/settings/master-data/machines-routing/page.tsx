@@ -66,18 +66,21 @@ export default function MachinesRoutingPage() {
   const [machineSkuEditingId, setMachineSkuEditingId] = useState<string | null>(null);
 
   const { toasts, push, remove } = useToast();
+  const [isTechno, setIsTechno] = useState(false);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [machineData, machineSkuData, skuData] = await Promise.all([
+      const [machineData, machineSkuData, skuData, userData] = await Promise.all([
         apiGet<Machine[]>("/api/machines"),
         apiGet<MachineSku[]>("/api/machine-skus"),
-        apiGet<FinishedSku[]>("/api/finished-skus")
+        apiGet<FinishedSku[]>("/api/finished-skus"),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setMachines(machineData);
       setMachineSkus(machineSkuData);
       setSkus(skuData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
       setMachineSkuForm((prev) => ({
         ...prev,
         machineId: prev.machineId || machineData[0]?.id || "",
@@ -292,11 +295,11 @@ export default function MachinesRoutingPage() {
                   code: machine.code,
                   name: machine.name,
                   capacity: machine.baseCapacityPerMinute,
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleMachineEdit(machine)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading machines..." : "No machines found."}
               />
@@ -376,11 +379,11 @@ export default function MachinesRoutingPage() {
                   machine: item.machine.name,
                   sku: item.sku.name,
                   capacity: item.capacityPerMinute,
-                  actions: (
+                  actions: isTechno ? (
                     <Button variant="ghost" onClick={() => handleMachineSkuEdit(item)}>
                       Edit
                     </Button>
-                  )
+                  ) : null
                 }))}
                 emptyLabel={loading ? "Loading machine SKUs..." : "No machine SKUs found."}
               />

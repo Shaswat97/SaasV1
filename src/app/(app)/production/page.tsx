@@ -314,13 +314,14 @@ export default function ProductionPage() {
   const [closeCrewRows, setCloseCrewRows] = useState<CrewCloseRow[]>([]);
   const [rawConsumptions, setRawConsumptions] = useState<RawConsumptionRow[]>([]);
   const [rawRowsAuto, setRawRowsAuto] = useState(true);
+  const [isTechno, setIsTechno] = useState(false);
 
   const { toasts, push, remove } = useToast();
 
   async function loadData() {
     setLoading(true);
     try {
-      const [machineData, employeeData, skuData, rawSkuData, rawBatchData, bomData, routingData, backlogData, logData] = await Promise.all([
+      const [machineData, employeeData, skuData, rawSkuData, rawBatchData, bomData, routingData, backlogData, logData, userData] = await Promise.all([
         apiGet<Machine[]>("/api/machines"),
         apiGet<Employee[]>("/api/employees"),
         apiGet<FinishedSku[]>("/api/finished-skus"),
@@ -329,7 +330,8 @@ export default function ProductionPage() {
         apiGet<Bom[]>("/api/boms"),
         apiGet<Routing[]>("/api/routings"),
         apiGet<BacklogLine[]>("/api/production-logs/backlog"),
-        apiGet<ProductionLog[]>(`/api/production-logs?includeCancelled=${includeCancelled ? "true" : "false"}`)
+        apiGet<ProductionLog[]>(`/api/production-logs?includeCancelled=${includeCancelled ? "true" : "false"}`),
+        apiGet<{ actorEmployeeCode: string | null }>("/api/active-user")
       ]);
       setMachines(machineData);
       setEmployees(employeeData);
@@ -340,6 +342,7 @@ export default function ProductionPage() {
       setRoutings(routingData);
       setBacklog(backlogData);
       setLogs(logData);
+      setIsTechno(userData.actorEmployeeCode === "Techno");
 
       if (!machineId && machineData[0]) setMachineId(machineData[0].id);
       if (!stockSkuId && skuData[0]) setStockSkuId(skuData[0].id);
@@ -1715,7 +1718,7 @@ export default function ProductionPage() {
                     </div>
                   ),
                   actions:
-                    log.status !== "CANCELLED" ? (
+                    log.status !== "CANCELLED" && isTechno ? (
                       <Button variant="ghost" className="h-8 w-8 p-0 text-text-muted hover:text-danger" onClick={() => cancelLog(log.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
